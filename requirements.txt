@@ -1,4 +1,0 @@
-python-telegram-bot==20.7
-openai==1.35.10
-aiohttp==3.9.5
-aiosqlite==0.20.0
