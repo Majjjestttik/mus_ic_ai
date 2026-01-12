@@ -1,0 +1,11 @@
+# Telegram bot (v20+ для async и современного синтаксиса)
+python-telegram-bot==20.6
+
+# Асинхронные HTTP-запросы (для OpenAI и PiAPI)
+aiohttp==3.9.5
+
+# OpenAI API (текст и Whisper)
+openai==1.34.0
+
+# Работа с аудио через ffmpeg (если используем голосовые сообщения)
+ffmpeg-python==0.2.0
