@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
@@ -19,5 +20,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler(&quot;start&quot;, start))
 app.add_handler(MessageHandler(filters.TEXT &amp; ~filters.COMMAND, handle_text))
+
 
 app.run_polling()
