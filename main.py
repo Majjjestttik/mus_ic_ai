@@ -38,11 +38,14 @@ logger = logging.getLogger("MusicAi")
 
 # -------------------- ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ --------------------
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # For Whisper voice transcription
 OWNER_ID = int(os.getenv("OWNER_TG_ID", "1225282893"))
 
-if not BOT_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN и OPENAI_API_KEY должны быть установлены!")
+if not BOT_TOKEN or not OPENROUTER_API_KEY:
+    raise RuntimeError("КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN и OPENROUTER_API_KEY должны быть установлены!")
+if not OPENAI_API_KEY:
+    logger.warning("OPENAI_API_KEY не установлен - голосовые сообщения не будут работать")
 
 # -------------------- ЦЕНЫ И ПАКЕТЫ --------------------
 PACKS = {"1": 250, "5": 1000, "25": 4000}
@@ -157,15 +160,24 @@ def tr(lang, key): return TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("e
 
 # -------------------- API --------------------
 async def openai_generate_song(prompt):
-    """Generate a song using OpenAI API"""
-    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    """Generate a song using OpenRouter API"""
+    # OpenRouter client with custom base URL
+    client = AsyncOpenAI(
+        api_key=OPENROUTER_API_KEY,
+        base_url="https://openrouter.ai/api/v1"
+    )
     
-    # Try GPT-4 first, fall back to GPT-3.5-turbo if not available
-    models_to_try = ["gpt-4", "gpt-3.5-turbo"]
+    # Try multiple models available on OpenRouter
+    models_to_try = [
+        "openai/gpt-4",
+        "openai/gpt-3.5-turbo",
+        "anthropic/claude-2",
+        "meta-llama/llama-2-70b-chat"
+    ]
     
     for model in models_to_try:
         try:
-            logger.info(f"Attempting to generate song with model: {model}")
+            logger.info(f"Attempting to generate song with OpenRouter model: {model}")
             response = await client.chat.completions.create(
                 model=model,
                 messages=[
@@ -173,13 +185,17 @@ async def openai_generate_song(prompt):
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1500,
-                temperature=0.8
+                temperature=0.8,
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/Majjjestttik/mus_ic_ai",
+                    "X-Title": "MusicAi Telegram Bot"
+                }
             )
             
-            logger.info(f"Successfully generated song with {model}")
+            logger.info(f"Successfully generated song with OpenRouter {model}")
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"OpenAI API error with {model}: {type(e).__name__}: {e}")
+            logger.error(f"OpenRouter API error with {model}: {type(e).__name__}: {e}")
             if model == models_to_try[-1]:
                 # Last model failed, return None
                 return None

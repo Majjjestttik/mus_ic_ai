@@ -1,11 +1,11 @@
 # mus_ic_ai
 
-A Telegram bot that helps users create songs based on descriptions in multiple languages using OpenAI's GPT-4.
+A Telegram bot that helps users create songs based on descriptions in multiple languages using OpenRouter AI models.
 
 ## Features
 
 - **Multi-language Support**: Polish, Ukrainian, English, German, French, Russian, Spanish
-- **Intelligent Song Generation**: Uses OpenAI GPT-4 to create song lyrics based on user descriptions
+- **Intelligent Song Generation**: Uses OpenRouter (GPT-4, GPT-3.5, Claude 2, Llama 2) to create song lyrics
 - **Voice Message Support**: Transcribe voice messages to text using OpenAI Whisper
 - **Multiple Themes**: Love, Funny, Holiday, Sad, Wedding, or custom themes
 - **Multiple Genres**: Pop, Rap, Rock, Club, Classical, Disco Polo
@@ -17,7 +17,8 @@ A Telegram bot that helps users create songs based on descriptions in multiple l
 
 - Python 3.9+
 - Telegram Bot Token
-- OpenAI API Key
+- OpenRouter API Key (for song generation)
+- OpenAI API Key (optional, for voice transcription)
 
 ## Installation
 
@@ -35,7 +36,8 @@ pip install -r requirements.txt
 3. Set up environment variables:
 ```bash
 export TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
-export OPENAI_API_KEY="your_openai_api_key"
+export OPENROUTER_API_KEY="your_openrouter_api_key"
+export OPENAI_API_KEY="your_openai_api_key"  # Optional, for voice transcription
 export OWNER_TG_ID="your_telegram_user_id"  # Optional
 ```
 
@@ -49,7 +51,8 @@ python main.py
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Yes | Token from @BotFather on Telegram |
-| `OPENAI_API_KEY` | Yes | OpenAI API key for GPT-4 and Whisper |
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for song generation (get from openrouter.ai) |
+| `OPENAI_API_KEY` | No | OpenAI API key for Whisper voice transcription (optional) |
 | `OWNER_TG_ID` | No | Owner's Telegram user ID (default: 1225282893) |
 
 ## Usage

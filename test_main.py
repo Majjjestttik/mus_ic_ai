@@ -11,6 +11,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 # Set up test environment variables before importing main
 os.environ["TELEGRAM_BOT_TOKEN"] = "test_bot_token_12345"
+os.environ["OPENROUTER_API_KEY"] = "test_openrouter_key_12345"
 os.environ["OPENAI_API_KEY"] = "test_openai_key_12345"
 os.environ["OWNER_TG_ID"] = "1225282893"
 
@@ -24,8 +25,12 @@ class TestEnvironmentVariables:
         """Test that BOT_TOKEN is loaded from environment"""
         assert main.BOT_TOKEN == "test_bot_token_12345"
     
-    def test_openai_key_required(self):
-        """Test that OPENAI_API_KEY is loaded from environment"""
+    def test_openrouter_key_required(self):
+        """Test that OPENROUTER_API_KEY is loaded from environment"""
+        assert main.OPENROUTER_API_KEY == "test_openrouter_key_12345"
+    
+    def test_openai_key_optional(self):
+        """Test that OPENAI_API_KEY is loaded from environment (optional for Whisper)"""
         assert main.OPENAI_API_KEY == "test_openai_key_12345"
     
     def test_missing_tokens_raises_error(self):
@@ -33,7 +38,7 @@ class TestEnvironmentVariables:
         # This test verifies the validation logic exists
         # The actual environment variables are set for testing
         assert main.BOT_TOKEN is not None
-        assert main.OPENAI_API_KEY is not None
+        assert main.OPENROUTER_API_KEY is not None
 
 
 class TestDatabase:
