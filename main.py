@@ -574,6 +574,73 @@ class PIAPIResult:
     task_id: str = ""
 
 
+async def piapi_generate_lyrics(
+    session: aiohttp.ClientSession,
+    prompt: str,
+    style: str,
+    language: str
+) -> PIAPIResult:
+    """
+    Generate lyrics using PIAPI (Suno Lyrics API).
+    
+    Args:
+        session: aiohttp client session
+        prompt: Description of the song
+        style: Music genre/style
+        language: Language code (e.g., 'ru', 'en', 'de')
+    
+    Returns:
+        PIAPIResult with lyrics text
+    """
+    if not PIAPI_API_KEY:
+        return PIAPIResult(ok=False, text="NO_PIAPI_KEY", status=401)
+
+    headers = {
+        "X-API-Key": PIAPI_API_KEY,
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": "suno",
+        "task_type": "lyrics",
+        "input": {
+            "prompt": prompt,
+            "style": style,
+            "language": language,
+        }
+    }
+
+    try:
+        async with session.post(
+            PIAPI_URL,
+            headers=headers,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=120),
+        ) as resp:
+            status = resp.status
+            raw = await resp.text()
+            if status != 200:
+                return PIAPIResult(ok=False, text=f"HTTP_{status}", status=status, raw=raw)
+
+            data = json.loads(raw)
+            # Lyrics endpoint might return lyrics directly or task_id
+            lyrics_text = data.get("lyrics", "")
+            task_id = data.get("task_id", "")
+            return PIAPIResult(
+                ok=True,
+                text=lyrics_text,
+                status=status,
+                raw=raw,
+                task_id=task_id,
+            )
+
+    except asyncio.TimeoutError:
+        return PIAPIResult(ok=False, text="TIMEOUT", status=0)
+    except Exception as e:
+        log.exception("PIAPI lyrics generation error: %s", e)
+        return PIAPIResult(ok=False, text="API_ERROR", status=0)
+
+
 async def piapi_generate_music(
     session: aiohttp.ClientSession,
     prompt: str,
@@ -590,7 +657,7 @@ async def piapi_generate_music(
         prompt: Description of the song
         style: Music genre/style
         language: Language code (e.g., 'ru', 'en', 'de')
-        duration: Duration in seconds (max 60 for demo)
+        duration: Duration in seconds
         lyrics: Optional lyrics text. If not provided, Suno generates lyrics automatically.
     
     Returns:
@@ -603,9 +670,6 @@ async def piapi_generate_music(
         "X-API-Key": PIAPI_API_KEY,
         "Content-Type": "application/json",
     }
-
-    # Limit duration to 60 seconds for demo
-    duration = min(duration, 60)
 
     payload = {
         "model": "suno",
@@ -1015,11 +1079,46 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get language code
     song_lang = u.get("song_language", "ru")
     
-    # Build prompt for PIAPI (Suno will auto-generate lyrics)
+    # Build prompt for PIAPI
     piapi_prompt = f"Create a {genre} song about: {text}"
     
-    # Generate 2 songs with Suno
-    await update.message.reply_text(tr(u, "music_generating"))
+    # Determine duration based on credits
+    # Demo version (new users without credits after this generation): 60 seconds
+    # Paid version (users with credits): full duration (no limit from our side)
+    credits_after = int(u.get("credits") or 0)
+    has_credits = credits_after > 0 or (ADMIN_ID > 0 and user_id == ADMIN_ID)
+    duration = 180 if has_credits else 60  # 3 minutes for paid, 60 seconds for demo
+    
+    # Step 1: Generate lyrics
+    await update.message.reply_text("🎵 Генерирую текст песни...")
+    
+    lyrics_text = ""
+    async with aiohttp.ClientSession() as session:
+        lyrics_res = await piapi_generate_lyrics(
+            session,
+            prompt=piapi_prompt,
+            style=style,
+            language=song_lang
+        )
+        
+        if not lyrics_res.ok:
+            log.error(f"PIAPI lyrics generation failed: {lyrics_res.text}")
+            # refund credit on failure (non-admin)
+            if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
+                u2 = user_get(user_id)
+                user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
+            
+            await update.message.reply_text(
+                "❌ Ошибка генерации текста песни.",
+                reply_markup=kb_main(user_get(user_id))
+            )
+            return
+        
+        lyrics_text = lyrics_res.text
+        log.info(f"Generated lyrics for user {user_id}: {len(lyrics_text)} chars")
+    
+    # Step 2: Generate 2 songs with the same lyrics
+    await update.message.reply_text(f"✅ Текст готов!\n\n🎵 Создаю 2 песни (до {duration} сек)...")
     
     task_ids = []
     async with aiohttp.ClientSession() as session:
@@ -1029,7 +1128,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             prompt=piapi_prompt,
             style=style,
             language=song_lang,
-            duration=60  # Max 60 seconds for demo
+            duration=duration,
+            lyrics=lyrics_text
         )
         
         if music_res1.ok:
@@ -1037,13 +1137,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             log.warning("PIAPI music generation 1 failed: %s", music_res1.text)
         
-        # Generate second song (variation)
+        # Generate second song with same lyrics
         music_res2 = await piapi_generate_music(
             session,
             prompt=piapi_prompt,
             style=style,
             language=song_lang,
-            duration=60
+            duration=duration,
+            lyrics=lyrics_text
         )
         
         if music_res2.ok:
@@ -1054,14 +1155,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Report results
     if len(task_ids) == 2:
         await update.message.reply_text(
-            f"✅ Созданы 2 песни!\n\nПесня 1: {task_ids[0]}\nПесня 2: {task_ids[1]}"
+            f"✅ Созданы 2 песни!\n\nПесня 1: {task_ids[0]}\nПесня 2: {task_ids[1]}\n\n"
+            f"Длительность: {duration} сек"
         )
-        history_add(user_id, text, f"Generated 2 songs: {task_ids[0]}, {task_ids[1]}")
+        history_add(user_id, text, f"Generated 2 songs ({duration}s): {task_ids[0]}, {task_ids[1]}")
     elif len(task_ids) == 1:
         await update.message.reply_text(
-            f"✅ Создана 1 песня: {task_ids[0]}\n⚠️ Вторая песня не удалась"
+            f"✅ Создана 1 песня: {task_ids[0]}\n⚠️ Вторая песня не удалась\n\nДлительность: {duration} сек"
         )
-        history_add(user_id, text, f"Generated 1 song: {task_ids[0]}")
+        history_add(user_id, text, f"Generated 1 song ({duration}s): {task_ids[0]}")
     else:
         # refund credit on complete failure (non-admin)
         if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
