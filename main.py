@@ -51,8 +51,7 @@ if not OPENAI_API_KEY:
 # Initialize OpenRouter client at module level (best practice)
 openrouter_client = AsyncOpenAI(
     api_key=OPENROUTER_API_KEY,
-    base_url="https://openrouter.ai/api/v1",
-    http_client=None  # Let the library handle HTTP client creation
+    base_url="https://openrouter.ai/api/v1"
 )
 
 # Initialize OpenAI client for Whisper (if key is available)
