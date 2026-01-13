@@ -646,7 +646,8 @@ async def piapi_generate_music(
     except asyncio.TimeoutError:
         return PIAPIResult(ok=False, text="TIMEOUT", status=0)
     except Exception as e:
-        return PIAPIResult(ok=False, text=f"EXC: {e}", status=0)
+        log.exception("PIAPI music generation error: %s", e)
+        return PIAPIResult(ok=False, text="API_ERROR", status=0)
 
 
 # =========================
@@ -1041,8 +1042,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get language code
         song_lang = u.get("song_language", "ru")
         
-        # Use the generated lyrics (extract lines without markers like [Verse], [Chorus])
-        lyrics_text = out
+        # Use the generated output (includes lyrics with structure markers)
+        llm_output = out
         
         # Build prompt for PIAPI
         piapi_prompt = f"Create a {genre} song: {text}"
@@ -1051,7 +1052,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             music_res = await piapi_generate_music(
                 session,
                 prompt=piapi_prompt,
-                lyrics=lyrics_text,
+                lyrics=llm_output,
                 style=style,
                 language=song_lang,
                 duration=60  # Max 60 seconds for demo
@@ -1063,9 +1064,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             # Music generation failed, but lyrics were generated successfully
-            await update.message.reply_text(
-                tr(u, "music_error") + f"\n\nDebug: {music_res.text}"
-            )
+            # Log the error but don't expose details to user
+            log.warning("PIAPI music generation failed: %s", music_res.text)
+            await update.message.reply_text(tr(u, "music_error"))
 
     u = user_get(user_id)
     await update.message.reply_text(
