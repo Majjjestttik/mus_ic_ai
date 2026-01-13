@@ -1,3 +1,5 @@
+import telegram, sys
+print("PTB VERSION:", telegram.__version__, "PY:", sys.version)
 # -*- coding: utf-8 -*-
 
 import os
