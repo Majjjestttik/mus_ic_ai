@@ -136,12 +136,12 @@ TEXTS = {
         "uk": "ℹ️ *Допомога*\n\n✏️ Чи можна змінити? Ні.\n🎶 2 варіанти.\n📄 Права ваші.",
     },
     "custom_theme_ask": {"en": "✏️ Write theme:", "ru": "✏️ Напиши тему:", "pl": "✏️ Napisz temat:", "uk": "✏️ Напиши тему:"},
-    "generating": {"en": "⏳ Generating...", "ru": "⏳ Генерирую...", "pl": "⏳ Generuję...", "uk": "⏳ Генерую..."},
-    "demo_header": {"en": "🎧 *Demo*", "ru": "🎧 *Демо*", "pl": "🎧 *Demo*", "uk": "🎧 *Демо*"},
-    "no_credits": {"en": "0 songs. Buy 👇", "ru": "0 песен. Купи пакет 👇", "pl": "0 piosenek 👇", "uk": "0 пісень 👇"},
-    "paid": {"en": "✅ Paid!", "ru": "✅ Оплачено!", "pl": "✅ Opłacono!", "uk": "✅ Оплачено!"},
-    "temp_error": {"en": "⚠️ Error. Try later.", "ru": "⚠️ Ошибка. Попробуй позже.", "pl": "⚠️ Błąd.", "uk": "⚠️ Помилка."},
-    "buy_confirm": {"en": "Spend ⭐ {stars}?", "ru": "Потратить ⭐ {stars}?", "pl": "Wydać ⭐ {stars}?", "uk": "Витратити ⭐ {stars}?"},
+    "generating": {"en": "⏳ Generating...", "ru": "⏳ Генерирую...", "pl": "⏳ Generuję...", "uk": "⏳ Генерую...", "de": "⏳ Generiere...", "es": "⏳ Generando...", "fr": "⏳ Génération..."},
+    "demo_header": {"en": "🎧 *Demo*", "ru": "🎧 *Демо*", "pl": "🎧 *Demo*", "uk": "🎧 *Демо*", "de": "🎧 *Demo*", "es": "🎧 *Demo*", "fr": "🎧 *Démo*"},
+    "no_credits": {"en": "0 songs. Buy 👇", "ru": "0 песен. Купи пакет 👇", "pl": "0 piosenek 👇", "uk": "0 пісень 👇", "de": "0 Lieder 👇", "es": "0 canciones 👇", "fr": "0 chansons 👇"},
+    "paid": {"en": "✅ Paid!", "ru": "✅ Оплачено!", "pl": "✅ Opłacono!", "uk": "✅ Оплачено!", "de": "✅ Bezahlt!", "es": "✅ ¡Pagado!", "fr": "✅ Payé!"},
+    "temp_error": {"en": "⚠️ Error generating song. Check API key and try again.", "ru": "⚠️ Ошибка генерации. Проверьте API ключ и попробуйте снова.", "pl": "⚠️ Błąd generowania. Sprawdź klucz API.", "uk": "⚠️ Помилка генерації. Перевірте API ключ.", "de": "⚠️ Fehler. Prüfen Sie den API-Schlüssel.", "es": "⚠️ Error. Verifique la clave API.", "fr": "⚠️ Erreur. Vérifiez la clé API."},
+    "buy_confirm": {"en": "Spend ⭐ {stars}?", "ru": "Потратить ⭐ {stars}?", "pl": "Wydać ⭐ {stars}?", "uk": "Витратити ⭐ {stars}?", "de": "⭐ {stars} ausgeben?", "es": "¿Gastar ⭐ {stars}?", "fr": "Dépenser ⭐ {stars}?"},
 }
 
 THEMES = {
@@ -158,23 +158,35 @@ def tr(lang, key): return TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("e
 # -------------------- API --------------------
 async def openai_generate_song(prompt):
     """Generate a song using OpenAI API"""
-    try:
-        client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-        
-        response = await client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a creative songwriting assistant. Create complete song lyrics with verses, chorus, and structure based on the user's description. Be creative and match the requested genre, theme, and language."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=1500,
-            temperature=0.8
-        )
-        
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"OpenAI API error: {e}")
-        return None
+    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    
+    # Try GPT-4 first, fall back to GPT-3.5-turbo if not available
+    models_to_try = ["gpt-4", "gpt-3.5-turbo"]
+    
+    for model in models_to_try:
+        try:
+            logger.info(f"Attempting to generate song with model: {model}")
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You are a creative songwriting assistant. Create complete song lyrics with verses, chorus, and structure based on the user's description. Be creative and match the requested genre, theme, and language."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1500,
+                temperature=0.8
+            )
+            
+            logger.info(f"Successfully generated song with {model}")
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"OpenAI API error with {model}: {type(e).__name__}: {e}")
+            if model == models_to_try[-1]:
+                # Last model failed, return None
+                return None
+            # Try next model
+            continue
+    
+    return None
 
 async def voice_to_text(file_path):
     if not OPENAI_API_KEY: return None
