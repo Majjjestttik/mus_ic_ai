@@ -263,11 +263,10 @@ TXT = {
                 "/history — история\n"
                 "/reset — сброс\n"
                 "/buy — купить кредиты (Stars)\n\n"
-                "Просто напиши тему песни — я верну текст + *Style Prompt* для Suno.\n\n"
-                "При наличии PIAPI_API_KEY можно генерировать музыку (до 60 сек).",
+                "Напиши тему песни — Suno создаст 2 песни с текстом и музыкой (до 60 сек каждая).",
         "need_topic": "Напиши тему/идею песни одним сообщением 🙂",
         "busy": "⏳ Генерирую…",
-        "no_key": "❌ Нет OPENROUTER_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
+        "no_key": "❌ Нет PIAPI_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
         "cooldown": "⏳ Слишком часто. Подожди немного.",
         "daily_limit": "🚫 Дневной лимит исчерпан. Попробуй завтра.",
         "settings": "⚙️ *Настройки*\n\nВыбери параметры — они сохраняются.",
@@ -282,7 +281,7 @@ TXT = {
         "buy_text": "Выбери пакет. Оплата в Telegram Stars (XTR). После оплаты кредиты начислятся автоматически.",
         "buy_ok": "✅ Оплата прошла! Начислил кредиты: +{add}. Сейчас у тебя: {credits}.",
         "buy_fail": "❌ Оплата не прошла или отменена.",
-        "music_generating": "🎵 Создаю музыку через PIAPI (Suno)...",
+        "music_generating": "🎵 Создаю 2 песни через Suno...",
         "music_success": "✅ Музыка создана! Task ID: {task_id}",
         "music_error": "❌ Ошибка создания музыки через PIAPI.",
     },
@@ -294,11 +293,10 @@ TXT = {
                 "/history — history\n"
                 "/reset — reset\n"
                 "/buy — buy credits (Stars)\n\n"
-                "Send a topic — I will return lyrics + *Suno Style Prompt*.\n\n"
-                "With PIAPI_API_KEY you can generate music (up to 60 sec).",
+                "Send a topic — Suno will create 2 songs with lyrics and music (up to 60 sec each).",
         "need_topic": "Send a song topic in one message 🙂",
         "busy": "⏳ Generating…",
-        "no_key": "❌ Missing OPENROUTER_API_KEY. Add it in Render → Environment Variables and restart.",
+        "no_key": "❌ Missing PIAPI_API_KEY. Add it in Render → Environment Variables and restart.",
         "cooldown": "⏳ Too fast. Please wait.",
         "daily_limit": "🚫 Daily limit reached. Try tomorrow.",
         "settings": "⚙️ *Settings*\n\nChoose options — they are saved.",
@@ -313,7 +311,7 @@ TXT = {
         "buy_text": "Choose a pack. Payment in Telegram Stars (XTR). Credits are added automatically after payment.",
         "buy_ok": "✅ Payment successful! Added credits: +{add}. You now have: {credits}.",
         "buy_fail": "❌ Payment failed or canceled.",
-        "music_generating": "🎵 Creating music via PIAPI (Suno)...",
+        "music_generating": "🎵 Creating 2 songs via Suno...",
         "music_success": "✅ Music created! Task ID: {task_id}",
         "music_error": "❌ Error creating music via PIAPI.",
     }
@@ -579,10 +577,10 @@ class PIAPIResult:
 async def piapi_generate_music(
     session: aiohttp.ClientSession,
     prompt: str,
-    lyrics: str,
     style: str,
     language: str,
-    duration: int = 60
+    duration: int = 60,
+    lyrics: str = None
 ) -> PIAPIResult:
     """
     Generate music using PIAPI (Suno Music API).
@@ -590,10 +588,10 @@ async def piapi_generate_music(
     Args:
         session: aiohttp client session
         prompt: Description of the song
-        lyrics: Song lyrics text
         style: Music genre/style
         language: Language code (e.g., 'ru', 'en', 'de')
         duration: Duration in seconds (max 60 for demo)
+        lyrics: Optional lyrics text. If not provided, Suno generates lyrics automatically.
     
     Returns:
         PIAPIResult with task information
@@ -614,12 +612,15 @@ async def piapi_generate_music(
         "task_type": "music",
         "input": {
             "prompt": prompt,
-            "lyrics": lyrics,
             "style": style,
             "language": language,
             "duration": duration,
         }
     }
+    
+    # Only include lyrics if provided, otherwise Suno auto-generates
+    if lyrics:
+        payload["input"]["lyrics"] = lyrics
 
     try:
         async with session.post(
@@ -809,28 +810,40 @@ async def on_successful_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     sp = update.message.successful_payment
     payload = (sp.invoice_payload or "")
+    log.info(f"Payment received from user {user_id}, payload: {payload}, currency: {sp.currency}, total_amount: {sp.total_amount}")
+    
     # expected: musicai|<user_id>|<pack_id>|<ts>
     add = 0
 
     try:
         parts = payload.split("|")
+        log.info(f"Payload parts: {parts}")
         if len(parts) >= 3 and parts[0] == "musicai":
             pay_user = int(parts[1])
             pack_id = parts[2]
+            log.info(f"Parsed: pay_user={pay_user}, pack_id={pack_id}, user_id={user_id}")
             if pay_user == user_id and pack_id in STARS_PACKS:
                 add = int(STARS_PACKS[pack_id]["credits_add"])
-    except Exception:
+                log.info(f"Credits to add: {add}")
+            else:
+                log.warning(f"Validation failed: pay_user={pay_user} vs user_id={user_id}, pack_id in STARS_PACKS: {pack_id in STARS_PACKS}")
+        else:
+            log.warning(f"Invalid payload format: {payload}")
+    except Exception as e:
+        log.exception(f"Error parsing payment payload: {e}")
         add = 0
 
     if add > 0:
         credits = int(u.get("credits") or 0) + add
         user_set(user_id, credits=credits)
         u = user_get(user_id)
+        log.info(f"Credits updated for user {user_id}: old={int(u.get('credits') or 0) - add}, new={int(u.get('credits') or 0)}")
         await update.message.reply_text(
             tr(u, "buy_ok").format(add=add, credits=int(u.get("credits") or 0)),
             reply_markup=kb_main(u)
         )
     else:
+        log.error(f"Payment failed for user {user_id}: no credits added")
         await update.message.reply_text(tr(u, "buy_fail"), reply_markup=kb_main(u))
 
 
@@ -962,7 +975,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(tr(u, reason), reply_markup=kb_main(u))
         return
 
-    if not OPENROUTER_API_KEY:
+    if not PIAPI_API_KEY:
         await update.message.reply_text(tr(u, "no_key"), reply_markup=kb_main(u))
         return
 
@@ -985,88 +998,81 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bump_usage(user_id)
     await update.message.reply_text(tr(u, "busy"))
 
-    system_prompt = build_system_prompt(u)
-    user_prompt = build_user_prompt(u, text)
-
+    # Map genre to style
+    genre = u.get("genre", "pop")
+    genre_map = {
+        "pop": "Pop",
+        "disco_polo": "Disco Polo",
+        "rap": "Hip-Hop",
+        "rock": "Rock",
+        "edm": "EDM",
+        "ballad": "Ballad",
+        "reggaeton": "Reggaeton",
+        "synthwave": "Synthwave",
+    }
+    style = genre_map.get(genre, "Pop")
+    
+    # Get language code
+    song_lang = u.get("song_language", "ru")
+    
+    # Build prompt for PIAPI (Suno will auto-generate lyrics)
+    piapi_prompt = f"Create a {genre} song about: {text}"
+    
+    # Generate 2 songs with Suno
+    await update.message.reply_text(tr(u, "music_generating"))
+    
+    task_ids = []
     async with aiohttp.ClientSession() as session:
-        res = await llm_chat(session, system_prompt, user_prompt)
-
-    if not res.ok:
-        # refund credit on failure (non-admin)
+        # Generate first song
+        music_res1 = await piapi_generate_music(
+            session,
+            prompt=piapi_prompt,
+            style=style,
+            language=song_lang,
+            duration=60  # Max 60 seconds for demo
+        )
+        
+        if music_res1.ok:
+            task_ids.append(music_res1.task_id)
+        else:
+            log.warning("PIAPI music generation 1 failed: %s", music_res1.text)
+        
+        # Generate second song (variation)
+        music_res2 = await piapi_generate_music(
+            session,
+            prompt=piapi_prompt,
+            style=style,
+            language=song_lang,
+            duration=60
+        )
+        
+        if music_res2.ok:
+            task_ids.append(music_res2.task_id)
+        else:
+            log.warning("PIAPI music generation 2 failed: %s", music_res2.text)
+    
+    # Report results
+    if len(task_ids) == 2:
+        await update.message.reply_text(
+            f"✅ Созданы 2 песни!\n\nПесня 1: {task_ids[0]}\nПесня 2: {task_ids[1]}"
+        )
+        history_add(user_id, text, f"Generated 2 songs: {task_ids[0]}, {task_ids[1]}")
+    elif len(task_ids) == 1:
+        await update.message.reply_text(
+            f"✅ Создана 1 песня: {task_ids[0]}\n⚠️ Вторая песня не удалась"
+        )
+        history_add(user_id, text, f"Generated 1 song: {task_ids[0]}")
+    else:
+        # refund credit on complete failure (non-admin)
         if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
             u2 = user_get(user_id)
             user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
-
-        if res.status == 401:
-            await update.message.reply_text(
-                "❌ 401: ключ OpenRouter не принят. Проверь OPENROUTER_API_KEY.",
-                reply_markup=kb_main(user_get(user_id))
-            )
-            return
-
+        
         await update.message.reply_text(
-            tr(u, "gen_error") + f"\n\nDebug: {res.text}\n{res.raw[:600]}",
+            tr(u, "music_error"),
             reply_markup=kb_main(user_get(user_id))
         )
         return
-
-    out = (res.text or "").strip()
-    history_add(user_id, text, out)
-
-    for part in split_text(out, MAX_TG_MESSAGE):
-        await update.message.reply_text(part)
-
-    # Optional: Try to generate music via PIAPI if key is available
-    if PIAPI_API_KEY:
-        await update.message.reply_text(tr(u, "music_generating"))
-        
-        # Extract style prompt from LLM output if present
-        style_prompt = ""
-        if "Style Prompt:" in out:
-            style_prompt = out.split("Style Prompt:")[-1].strip()
-        
-        # Map genre to style
-        genre = u.get("genre", "pop")
-        genre_map = {
-            "pop": "Pop",
-            "disco_polo": "Disco Polo",
-            "rap": "Hip-Hop",
-            "rock": "Rock",
-            "edm": "EDM",
-            "ballad": "Ballad",
-            "reggaeton": "Reggaeton",
-            "synthwave": "Synthwave",
-        }
-        style = style_prompt if style_prompt else genre_map.get(genre, "Pop")
-        
-        # Get language code
-        song_lang = u.get("song_language", "ru")
-        
-        # Use the generated output (includes lyrics with structure markers)
-        llm_output = out
-        
-        # Build prompt for PIAPI
-        piapi_prompt = f"Create a {genre} song: {text}"
-        
-        async with aiohttp.ClientSession() as session:
-            music_res = await piapi_generate_music(
-                session,
-                prompt=piapi_prompt,
-                lyrics=llm_output,
-                style=style,
-                language=song_lang,
-                duration=60  # Max 60 seconds for demo
-            )
-        
-        if music_res.ok:
-            await update.message.reply_text(
-                tr(u, "music_success").format(task_id=music_res.task_id)
-            )
-        else:
-            # Music generation failed, but lyrics were generated successfully
-            # Log the error but don't expose details to user
-            log.warning("PIAPI music generation failed: %s", music_res.text)
-            await update.message.reply_text(tr(u, "music_error"))
 
     u = user_get(user_id)
     await update.message.reply_text(
