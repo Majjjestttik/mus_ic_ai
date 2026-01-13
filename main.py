@@ -51,6 +51,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
 
+PIAPI_API_KEY = os.getenv("PIAPI_API_KEY", "").strip()
+
 ADMIN_ID = int((os.getenv("ADMIN_ID", "0") or "0").strip())
 
 if not TELEGRAM_TOKEN:
@@ -261,10 +263,10 @@ TXT = {
                 "/history — история\n"
                 "/reset — сброс\n"
                 "/buy — купить кредиты (Stars)\n\n"
-                "Просто напиши тему песни — я верну текст + *Style Prompt* для Suno.",
+                "Напиши тему песни — Suno создаст 2 песни с текстом и музыкой (до 60 сек каждая).",
         "need_topic": "Напиши тему/идею песни одним сообщением 🙂",
         "busy": "⏳ Генерирую…",
-        "no_key": "❌ Нет OPENROUTER_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
+        "no_key": "❌ Нет PIAPI_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
         "cooldown": "⏳ Слишком часто. Подожди немного.",
         "daily_limit": "🚫 Дневной лимит исчерпан. Попробуй завтра.",
         "settings": "⚙️ *Настройки*\n\nВыбери параметры — они сохраняются.",
@@ -279,6 +281,9 @@ TXT = {
         "buy_text": "Выбери пакет. Оплата в Telegram Stars (XTR). После оплаты кредиты начислятся автоматически.",
         "buy_ok": "✅ Оплата прошла! Начислил кредиты: +{add}. Сейчас у тебя: {credits}.",
         "buy_fail": "❌ Оплата не прошла или отменена.",
+        "music_generating": "🎵 Создаю 2 песни через Suno...",
+        "music_success": "✅ Музыка создана! Task ID: {task_id}",
+        "music_error": "❌ Ошибка создания музыки через PIAPI.",
     },
     "en": {
         "start": "🎵 *MusicAi PRO*\n\nSend a song topic in one message.\n\n⭐ Billing: each generation costs *1 credit*. Buy credits with *Telegram Stars*.",
@@ -288,10 +293,10 @@ TXT = {
                 "/history — history\n"
                 "/reset — reset\n"
                 "/buy — buy credits (Stars)\n\n"
-                "Send a topic — I will return lyrics + *Suno Style Prompt*.",
+                "Send a topic — Suno will create 2 songs with lyrics and music (up to 60 sec each).",
         "need_topic": "Send a song topic in one message 🙂",
         "busy": "⏳ Generating…",
-        "no_key": "❌ Missing OPENROUTER_API_KEY. Add it in Render → Environment Variables and restart.",
+        "no_key": "❌ Missing PIAPI_API_KEY. Add it in Render → Environment Variables and restart.",
         "cooldown": "⏳ Too fast. Please wait.",
         "daily_limit": "🚫 Daily limit reached. Try tomorrow.",
         "settings": "⚙️ *Settings*\n\nChoose options — they are saved.",
@@ -306,6 +311,9 @@ TXT = {
         "buy_text": "Choose a pack. Payment in Telegram Stars (XTR). Credits are added automatically after payment.",
         "buy_ok": "✅ Payment successful! Added credits: +{add}. You now have: {credits}.",
         "buy_fail": "❌ Payment failed or canceled.",
+        "music_generating": "🎵 Creating 2 songs via Suno...",
+        "music_success": "✅ Music created! Task ID: {task_id}",
+        "music_error": "❌ Error creating music via PIAPI.",
     }
 }
 
@@ -474,7 +482,8 @@ def build_system_prompt(u: Dict[str, Any]) -> str:
 
 2) Текст должен быть ритмичным и подходить для музыкального исполнения, {rhyme_text}.
 3) Не пиши лишних объяснений — только песня.
-4) В конце КАЖДОГО ответа добавляй отдельной строкой:
+4) Напиши ТОЛЬКО ОДИН вариант текста, НЕ создавай несколько вариантов.
+5) В конце КАЖДОГО ответа добавляй отдельной строкой:
 Style Prompt: {style_prompt}
 
 Важно: Style Prompt всегда на английском.
@@ -549,6 +558,89 @@ async def llm_chat(session: aiohttp.ClientSession, system_prompt: str, user_prom
         return LLMResult(ok=False, text="TIMEOUT", status=0)
     except Exception as e:
         return LLMResult(ok=False, text=f"EXC: {e}", status=0)
+
+
+# =========================
+# PIAPI CLIENT (SUNO)
+# =========================
+PIAPI_URL = "https://api.piapi.ai/api/v1/task"
+
+
+@dataclass
+class PIAPIResult:
+    ok: bool
+    text: str
+    status: int = 0
+    raw: str = ""
+    task_id: str = ""
+
+
+async def piapi_generate_music(
+    session: aiohttp.ClientSession,
+    prompt_with_lyrics: str,
+    title: str,
+    tags: str,
+    duration: int = 60
+) -> PIAPIResult:
+    """
+    Generate music using PIAPI (Suno Music API).
+    
+    Args:
+        session: aiohttp client session
+        prompt_with_lyrics: Full prompt including lyrics in [Verse]/[Chorus] format
+        title: Song title
+        tags: Music style tags
+        duration: Duration in seconds
+    
+    Returns:
+        PIAPIResult with task information
+    """
+    if not PIAPI_API_KEY:
+        return PIAPIResult(ok=False, text="NO_PIAPI_KEY", status=401)
+
+    headers = {
+        "X-API-Key": PIAPI_API_KEY,
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": "suno",
+        "task_type": "music",
+        "input": {
+            "prompt": prompt_with_lyrics,
+            "mv": "chirp-v3-5",  # Suno model version
+            "title": title,
+            "tags": tags
+        }
+    }
+
+    try:
+        async with session.post(
+            PIAPI_URL,
+            headers=headers,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=120),
+        ) as resp:
+            status = resp.status
+            raw = await resp.text()
+            if status != 200:
+                return PIAPIResult(ok=False, text=f"HTTP_{status}", status=status, raw=raw)
+
+            data = json.loads(raw)
+            task_id = data.get("task_id", "")
+            return PIAPIResult(
+                ok=True,
+                text="TASK_CREATED",
+                status=status,
+                raw=raw,
+                task_id=task_id,
+            )
+
+    except asyncio.TimeoutError:
+        return PIAPIResult(ok=False, text="TIMEOUT", status=0)
+    except Exception as e:
+        log.exception("PIAPI music generation error: %s", e)
+        return PIAPIResult(ok=False, text="API_ERROR", status=0)
 
 
 # =========================
@@ -710,28 +802,40 @@ async def on_successful_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     sp = update.message.successful_payment
     payload = (sp.invoice_payload or "")
+    log.info(f"Payment received from user {user_id}, payload: {payload}, currency: {sp.currency}, total_amount: {sp.total_amount}")
+    
     # expected: musicai|<user_id>|<pack_id>|<ts>
     add = 0
 
     try:
         parts = payload.split("|")
+        log.info(f"Payload parts: {parts}")
         if len(parts) >= 3 and parts[0] == "musicai":
             pay_user = int(parts[1])
             pack_id = parts[2]
+            log.info(f"Parsed: pay_user={pay_user}, pack_id={pack_id}, user_id={user_id}")
             if pay_user == user_id and pack_id in STARS_PACKS:
                 add = int(STARS_PACKS[pack_id]["credits_add"])
-    except Exception:
+                log.info(f"Credits to add: {add}")
+            else:
+                log.warning(f"Validation failed: pay_user={pay_user} vs user_id={user_id}, pack_id in STARS_PACKS: {pack_id in STARS_PACKS}")
+        else:
+            log.warning(f"Invalid payload format: {payload}")
+    except Exception as e:
+        log.exception(f"Error parsing payment payload: {e}")
         add = 0
 
     if add > 0:
         credits = int(u.get("credits") or 0) + add
         user_set(user_id, credits=credits)
         u = user_get(user_id)
+        log.info(f"Credits updated for user {user_id}: old={int(u.get('credits') or 0) - add}, new={int(u.get('credits') or 0)}")
         await update.message.reply_text(
             tr(u, "buy_ok").format(add=add, credits=int(u.get("credits") or 0)),
             reply_markup=kb_main(u)
         )
     else:
+        log.error(f"Payment failed for user {user_id}: no credits added")
         await update.message.reply_text(tr(u, "buy_fail"), reply_markup=kb_main(u))
 
 
@@ -748,6 +852,105 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data or ""
 
     if data == "noop":
+        return
+
+    # Music generation flow
+    if data == "generate_music":
+        # Get pending lyrics from user context
+        lyrics = u.get("pending_lyrics")
+        topic = u.get("pending_topic", "Song")
+        style = u.get("pending_style", "Pop")
+        duration = u.get("pending_duration", 60)
+        
+        if not lyrics:
+            await query.message.reply_text("❌ Нет сохраненного текста. Отправьте новую тему.", reply_markup=kb_main(u))
+            return
+        
+        # Clear pending data
+        user_set(user_id, pending_lyrics=None, pending_topic=None, pending_style=None, pending_duration=None)
+        
+        await query.message.reply_text(f"🎵 Создаю 2 песни с этим текстом...")
+        
+        # Prepare song title and tags
+        song_title = topic[:50] if len(topic) <= 50 else topic[:47] + "..."
+        tags = style.lower()
+        
+        task_ids = []
+        async with aiohttp.ClientSession() as session:
+            # Generate first song
+            music_res1 = await piapi_generate_music(
+                session,
+                prompt_with_lyrics=lyrics,
+                title=song_title,
+                tags=tags,
+                duration=duration
+            )
+            
+            if music_res1.ok:
+                task_ids.append(music_res1.task_id)
+            else:
+                log.warning("PIAPI music generation 1 failed: %s", music_res1.text)
+            
+            # Generate second song with same lyrics
+            music_res2 = await piapi_generate_music(
+                session,
+                prompt_with_lyrics=lyrics,
+                title=song_title,
+                tags=tags,
+                duration=duration
+            )
+            
+            if music_res2.ok:
+                task_ids.append(music_res2.task_id)
+            else:
+                log.warning("PIAPI music generation 2 failed: %s", music_res2.text)
+        
+        # Report results
+        if len(task_ids) == 2:
+            await query.message.reply_text(
+                f"✅ Созданы 2 песни!\n\nПесня 1: {task_ids[0]}\nПесня 2: {task_ids[1]}"
+            )
+            history_add(user_id, topic, f"Generated 2 songs: {task_ids[0]}, {task_ids[1]}")
+        elif len(task_ids) == 1:
+            await query.message.reply_text(
+                f"✅ Создана 1 песня: {task_ids[0]}\n⚠️ Вторая песня не удалась"
+            )
+            history_add(user_id, topic, f"Generated 1 song: {task_ids[0]}")
+        else:
+            # refund credit on complete failure (non-admin)
+            if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
+                u2 = user_get(user_id)
+                user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
+            
+            await query.message.reply_text(
+                tr(u, "music_error"),
+                reply_markup=kb_main(user_get(user_id))
+            )
+            return
+
+        u = user_get(user_id)
+        await query.message.reply_text(
+            "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb_main(u)
+        )
+        return
+    
+    if data == "regenerate_lyrics":
+        # Get the original topic
+        topic = u.get("pending_topic")
+        if not topic:
+            await query.message.reply_text("❌ Тема не найдена. Отправьте новую тему.", reply_markup=kb_main(u))
+            return
+        
+        # Clear pending data and refund the credit (since they didn't use it for music)
+        user_set(user_id, pending_lyrics=None, pending_topic=None, pending_style=None, pending_duration=None)
+        
+        # Message the user to send new topic or just trigger regeneration
+        await query.message.reply_text(
+            f"🔄 Отправьте новую тему для песни, или отправьте ту же тему '{topic[:50]}...' для повторной генерации.",
+            reply_markup=kb_main(u)
+        )
         return
 
     # Buy flow
@@ -867,6 +1070,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(tr(u, "no_key"), reply_markup=kb_main(u))
         return
 
+    if not PIAPI_API_KEY:
+        await update.message.reply_text("❌ Нет PIAPI_API_KEY для создания музыки.", reply_markup=kb_main(u))
+        return
+
     # credits check (admin bypass)
     if ADMIN_ID > 0 and user_id == ADMIN_ID:
         pass
@@ -886,6 +1093,31 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bump_usage(user_id)
     await update.message.reply_text(tr(u, "busy"))
 
+    # Map genre to style
+    genre = u.get("genre", "pop")
+    genre_map = {
+        "pop": "Pop",
+        "disco_polo": "Disco Polo",
+        "rap": "Hip-Hop",
+        "rock": "Rock",
+        "edm": "EDM",
+        "ballad": "Ballad",
+        "reggaeton": "Reggaeton",
+        "synthwave": "Synthwave",
+    }
+    style = genre_map.get(genre, "Pop")
+    
+    # Get language code
+    song_lang = u.get("song_language", "ru")
+    
+    # Determine duration based on credits
+    # Demo version (new users without credits after this generation): 60 seconds
+    # Paid version (users with credits): full duration (no limit from our side)
+    credits_after = int(u.get("credits") or 0)
+    has_credits = credits_after > 0 or (ADMIN_ID > 0 and user_id == ADMIN_ID)
+    duration = 180 if has_credits else 60  # 3 minutes for paid, 60 seconds for demo
+    
+    # Step 1: Generate lyrics using OpenRouter LLM
     system_prompt = build_system_prompt(u)
     user_prompt = build_user_prompt(u, text)
 
@@ -898,30 +1130,35 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             u2 = user_get(user_id)
             user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
 
-        if res.status == 401:
-            await update.message.reply_text(
-                "❌ 401: ключ OpenRouter не принят. Проверь OPENROUTER_API_KEY.",
-                reply_markup=kb_main(user_get(user_id))
-            )
-            return
-
         await update.message.reply_text(
-            tr(u, "gen_error") + f"\n\nDebug: {res.text}\n{res.raw[:600]}",
+            tr(u, "gen_error"),
             reply_markup=kb_main(user_get(user_id))
         )
         return
 
-    out = (res.text or "").strip()
-    history_add(user_id, text, out)
-
-    for part in split_text(out, MAX_TG_MESSAGE):
-        await update.message.reply_text(part)
-
-    u = user_get(user_id)
+    lyrics_with_structure = (res.text or "").strip()
+    history_add(user_id, text, lyrics_with_structure)
+    log.info(f"Generated lyrics for user {user_id}: {len(lyrics_with_structure)} chars")
+    
+    # Store lyrics and generation parameters in user context for later music generation
+    user_set(user_id, 
+             pending_lyrics=lyrics_with_structure,
+             pending_topic=text,
+             pending_style=style,
+             pending_duration=duration)
+    
+    # Show lyrics to user with buttons to either regenerate or create music
+    lyrics_preview = lyrics_with_structure if len(lyrics_with_structure) <= 3000 else lyrics_with_structure[:3000] + "\n\n..."
+    
+    buttons = [
+        [InlineKeyboardButton("🎵 Сгенерировать песню", callback_data="generate_music")],
+        [InlineKeyboardButton("🔄 Изменить текст", callback_data="regenerate_lyrics")],
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
+    
     await update.message.reply_text(
-        "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=kb_main(u)
+        f"✅ Текст песни готов!\n\n{lyrics_preview}",
+        reply_markup=keyboard
     )
 
 
