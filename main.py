@@ -2,7 +2,7 @@
 """
 MusicAi PRO (Telegram bot) + Telegram Stars payments (XTR)
 - python-telegram-bot v21+ (async)
-- PiAPI Chat Completions (LLM)
+- OpenRouter Chat Completions (LLM)
 - SQLite user settings + credits
 - Buttons: language, genre, mood, etc.
 - Payments: sendInvoice (XTR), pre_checkout_query, successful_payment
@@ -42,14 +42,19 @@ from telegram.ext import (
 # =========================
 # ENV
 # =========================
+# On Render you can skip .env entirely and use Environment Variables,
+# but load_dotenv() won't hurt locally.
 load_dotenv()
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
-PIAPI_KEY = os.getenv("PIAPI_KEY", "").strip()
-PIAPI_MODEL = os.getenv("PIAPI_MODEL", "gpt-4o").strip()
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
+
 ADMIN_ID = int((os.getenv("ADMIN_ID", "0") or "0").strip())
 
 if not TELEGRAM_TOKEN:
-    raise RuntimeError("❌ TELEGRAM_TOKEN is missing in .env")
+    raise RuntimeError("❌ TELEGRAM_TOKEN is missing (Render Env Vars or .env)")
 
 # =========================
 # LOGGING
@@ -65,13 +70,16 @@ log = logging.getLogger("MusicAiPRO")
 # =========================
 DB_PATH = "musicai.db"
 
+
 def db_connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def start_of_day_ts(ts: int) -> int:
     return ts - (ts % 86400)
+
 
 def db_init():
     conn = db_connect()
@@ -121,8 +129,10 @@ def db_init():
 
     conn.close()
 
+
 def now_ts() -> int:
     return int(time.time())
+
 
 def user_ensure(user_id: int):
     now = now_ts()
@@ -140,6 +150,7 @@ def user_ensure(user_id: int):
     conn.commit()
     conn.close()
 
+
 def user_get(user_id: int) -> Dict[str, Any]:
     conn = db_connect()
     cur = conn.cursor()
@@ -147,6 +158,7 @@ def user_get(user_id: int) -> Dict[str, Any]:
     row = cur.fetchone()
     conn.close()
     return dict(row) if row else {}
+
 
 def user_set(user_id: int, **fields):
     if not fields:
@@ -160,6 +172,7 @@ def user_set(user_id: int, **fields):
     conn.commit()
     conn.close()
 
+
 def history_add(user_id: int, prompt: str, response: str):
     conn = db_connect()
     cur = conn.cursor()
@@ -169,6 +182,7 @@ def history_add(user_id: int, prompt: str, response: str):
     )
     conn.commit()
     conn.close()
+
 
 def history_last(user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
     conn = db_connect()
@@ -181,6 +195,7 @@ def history_last(user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
     conn.close()
     return [dict(r) for r in rows]
 
+
 # =========================
 # LIMITS
 # =========================
@@ -189,15 +204,18 @@ COOLDOWN_SECONDS = 3
 MAX_USER_TEXT = 800
 MAX_TG_MESSAGE = 3900
 
+
 def normalize_user_text(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"\s+", " ", s)
     return s
 
+
 def split_text(text: str, chunk: int = MAX_TG_MESSAGE) -> List[str]:
     if len(text) <= chunk:
         return [text]
-    return [text[i:i+chunk] for i in range(0, len(text), chunk)]
+    return [text[i:i + chunk] for i in range(0, len(text), chunk)]
+
 
 def ensure_daily_limits(user_id: int) -> Tuple[bool, str]:
     u = user_get(user_id)
@@ -220,6 +238,7 @@ def ensure_daily_limits(user_id: int) -> Tuple[bool, str]:
 
     return True, ""
 
+
 def bump_usage(user_id: int):
     u = user_get(user_id)
     now = now_ts()
@@ -228,6 +247,7 @@ def bump_usage(user_id: int):
         daily_count=int(u.get("daily_count") or 0) + 1,
         cooldown_until=now + COOLDOWN_SECONDS
     )
+
 
 # =========================
 # UI TEXT
@@ -244,7 +264,7 @@ TXT = {
                 "Просто напиши тему песни — я верну текст + *Style Prompt* для Suno.",
         "need_topic": "Напиши тему/идею песни одним сообщением 🙂",
         "busy": "⏳ Генерирую…",
-        "no_key": "❌ Нет PIAPI_KEY. Добавь ключ в `.env` и перезапусти бота.",
+        "no_key": "❌ Нет OPENROUTER_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
         "cooldown": "⏳ Слишком часто. Подожди немного.",
         "daily_limit": "🚫 Дневной лимит исчерпан. Попробуй завтра.",
         "settings": "⚙️ *Настройки*\n\nВыбери параметры — они сохраняются.",
@@ -271,7 +291,7 @@ TXT = {
                 "Send a topic — I will return lyrics + *Suno Style Prompt*.",
         "need_topic": "Send a song topic in one message 🙂",
         "busy": "⏳ Generating…",
-        "no_key": "❌ Missing PIAPI_KEY. Put it in `.env` and restart the bot.",
+        "no_key": "❌ Missing OPENROUTER_API_KEY. Add it in Render → Environment Variables and restart.",
         "cooldown": "⏳ Too fast. Please wait.",
         "daily_limit": "🚫 Daily limit reached. Try tomorrow.",
         "settings": "⚙️ *Settings*\n\nChoose options — they are saved.",
@@ -289,9 +309,11 @@ TXT = {
     }
 }
 
+
 def tr(u: Dict[str, Any], key: str) -> str:
     lang = (u.get("lang") or "ru").lower()
     return TXT.get(lang, TXT["ru"]).get(key, TXT["ru"].get(key, key))
+
 
 def format_settings(u: Dict[str, Any]) -> str:
     return (
@@ -305,6 +327,7 @@ def format_settings(u: Dict[str, Any]) -> str:
         f"Rhyme: {u.get('rhyme')}\n"
         f"Credits: {u.get('credits')}\n"
     )
+
 
 # =========================
 # OPTIONS
@@ -371,10 +394,11 @@ RHYME = [
 # credits_add = how many generations user gets
 # =========================
 STARS_PACKS = {
-    "p1": {"title_ru": "5 генераций",  "title_en": "5 generations",  "amount_xtr": 25,  "credits_add": 5},
-    "p2": {"title_ru": "25 генераций", "title_en": "25 generations", "amount_xtr": 90,  "credits_add": 25},
-    "p3": {"title_ru": "100 генераций","title_en": "100 generations","amount_xtr": 300, "credits_add": 100},
+    "p1": {"title_ru": "5 генераций", "title_en": "5 generations", "amount_xtr": 25, "credits_add": 5},
+    "p2": {"title_ru": "25 генераций", "title_en": "25 generations", "amount_xtr": 90, "credits_add": 25},
+    "p3": {"title_ru": "100 генераций", "title_en": "100 generations", "amount_xtr": 300, "credits_add": 100},
 }
+
 
 # =========================
 # PROMPT BUILDER
@@ -433,7 +457,12 @@ def build_system_prompt(u: Dict[str, Any]) -> str:
     }
     energy_map = {"low": "Low Energy", "medium": "Medium Energy", "high": "High Energy"}
 
-    style_prompt = f"Style: {genre_map.get(genre,'Pop')}, {vocal_map.get(vocal,'Male Vocal')}, {mood_map.get(mood,'Neutral')}, {energy_map.get(energy,'Medium Energy')}"
+    style_prompt = (
+        f"Style: {genre_map.get(genre, 'Pop')}, "
+        f"{vocal_map.get(vocal, 'Male Vocal')}, "
+        f"{mood_map.get(mood, 'Neutral')}, "
+        f"{energy_map.get(energy, 'Medium Energy')}"
+    )
 
     sys = f"""
 Ты — профессиональный автор песен и композитор.
@@ -452,31 +481,42 @@ Style Prompt: {style_prompt}
 """
     return normalize_user_text(sys)
 
+
 def build_user_prompt(u: Dict[str, Any], user_text: str) -> str:
     genre = u.get("genre", "pop")
     mood = u.get("mood", "neutral")
     user_text = normalize_user_text(user_text)[:MAX_USER_TEXT]
     return f"Жанр: {genre}. Настроение: {mood}. Тема: {user_text}"
 
+
 # =========================
-# PIAPI CLIENT
+# OPENROUTER CLIENT
 # =========================
-PIAPI_URL = "https://api.piapi.ai/v1/chat/completions"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 
 @dataclass
-class PiApiResult:
+class LLMResult:
     ok: bool
     text: str
     status: int = 0
     raw: str = ""
 
-async def piapi_chat(session: aiohttp.ClientSession, system_prompt: str, user_prompt: str) -> PiApiResult:
-    if not PIAPI_KEY:
-        return PiApiResult(ok=False, text="NO_KEY", status=401)
 
-    headers = {"Authorization": f"Bearer {PIAPI_KEY}", "Content-Type": "application/json"}
+async def llm_chat(session: aiohttp.ClientSession, system_prompt: str, user_prompt: str) -> LLMResult:
+    if not OPENROUTER_API_KEY:
+        return LLMResult(ok=False, text="NO_KEY", status=401)
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        # Not required, but recommended by OpenRouter:
+        "HTTP-Referer": "https://render.com",
+        "X-Title": "MusicAi Telegram Bot",
+    }
+
     payload = {
-        "model": PIAPI_MODEL,
+        "model": OPENROUTER_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -486,17 +526,30 @@ async def piapi_chat(session: aiohttp.ClientSession, system_prompt: str, user_pr
     }
 
     try:
-        async with session.post(PIAPI_URL, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+        async with session.post(
+            OPENROUTER_URL,
+            headers=headers,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=60),
+        ) as resp:
             status = resp.status
             raw = await resp.text()
             if status != 200:
-                return PiApiResult(ok=False, text=f"HTTP_{status}", status=status, raw=raw)
+                return LLMResult(ok=False, text=f"HTTP_{status}", status=status, raw=raw)
+
             data = json.loads(raw)
-            return PiApiResult(ok=True, text=data["choices"][0]["message"]["content"], status=status, raw=raw)
+            return LLMResult(
+                ok=True,
+                text=data["choices"][0]["message"]["content"],
+                status=status,
+                raw=raw,
+            )
+
     except asyncio.TimeoutError:
-        return PiApiResult(ok=False, text="TIMEOUT", status=0)
+        return LLMResult(ok=False, text="TIMEOUT", status=0)
     except Exception as e:
-        return PiApiResult(ok=False, text=f"EXC: {e}", status=0)
+        return LLMResult(ok=False, text=f"EXC: {e}", status=0)
+
 
 # =========================
 # KEYBOARDS
@@ -522,10 +575,12 @@ def kb_main(u: Dict[str, Any]) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(buttons)
 
+
 def kb_list(items: List[Tuple[str, str]], prefix: str) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(name, callback_data=f"set:{prefix}:{val}")] for name, val in items]
     rows.append([InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")])
     return InlineKeyboardMarkup(rows)
+
 
 def kb_buy(u: Dict[str, Any]) -> InlineKeyboardMarkup:
     rows = []
@@ -536,6 +591,7 @@ def kb_buy(u: Dict[str, Any]) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")])
     return InlineKeyboardMarkup(rows)
 
+
 # =========================
 # COMMANDS
 # =========================
@@ -545,11 +601,13 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = user_get(user_id)
     await update.message.reply_text(tr(u, "start"), parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
 
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_ensure(user_id)
     u = user_get(user_id)
     await update.message.reply_text(tr(u, "help"), reply_markup=kb_main(u))
+
 
 async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -557,6 +615,7 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = user_get(user_id)
     text = tr(u, "settings") + "\n\n```" + "\n" + format_settings(u) + "```"
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
+
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -575,6 +634,7 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = user_get(user_id)
     await update.message.reply_text(tr(u, "reset"), reply_markup=kb_main(u))
 
+
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_ensure(user_id)
@@ -592,11 +652,13 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"\n*{ts}*\n_Topic:_ {it['prompt']}\n{resp}")
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
 
+
 async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_ensure(user_id)
     u = user_get(user_id)
     await update.message.reply_text(tr(u, "buy_text"), reply_markup=kb_buy(u))
+
 
 # =========================
 # PAYMENTS (STARS)
@@ -604,6 +666,7 @@ async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def make_payload(user_id: int, pack_id: str) -> str:
     # payload must be 1-128 bytes. Keep it short.
     return f"musicai|{user_id}|{pack_id}|{now_ts()}"
+
 
 async def send_stars_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str):
     user_id = update.effective_user.id
@@ -625,10 +688,11 @@ async def send_stars_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE,
         title=title,
         description=desc,
         payload=payload,
-        provider_token="",   # Stars: empty token
+        provider_token="",  # Stars: empty token
         currency="XTR",
         prices=prices,
     )
+
 
 async def on_precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Must answer pre-checkout query
@@ -637,6 +701,7 @@ async def on_precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer(ok=True)
     except Exception:
         pass
+
 
 async def on_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -662,9 +727,13 @@ async def on_successful_payment(update: Update, context: ContextTypes.DEFAULT_TY
         credits = int(u.get("credits") or 0) + add
         user_set(user_id, credits=credits)
         u = user_get(user_id)
-        await update.message.reply_text(tr(u, "buy_ok").format(add=add, credits=int(u.get("credits") or 0)), reply_markup=kb_main(u))
+        await update.message.reply_text(
+            tr(u, "buy_ok").format(add=add, credits=int(u.get("credits") or 0)),
+            reply_markup=kb_main(u)
+        )
     else:
         await update.message.reply_text(tr(u, "buy_fail"), reply_markup=kb_main(u))
+
 
 # =========================
 # CALLBACKS
@@ -761,12 +830,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_set(user_id, **{field: value})
 
         u = user_get(user_id)
-        await query.message.reply_text(tr(u, "saved") + "\n\n```" + "\n" + format_settings(u) + "```", parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
+        await query.message.reply_text(
+            tr(u, "saved") + "\n\n```" + "\n" + format_settings(u) + "```",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb_main(u)
+        )
         try:
             await query.edit_message_reply_markup(reply_markup=kb_main(u))
         except Exception:
             pass
         return
+
 
 # =========================
 # GENERATION HANDLER
@@ -789,7 +863,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(tr(u, reason), reply_markup=kb_main(u))
         return
 
-    if not PIAPI_KEY:
+    if not OPENROUTER_API_KEY:
         await update.message.reply_text(tr(u, "no_key"), reply_markup=kb_main(u))
         return
 
@@ -799,7 +873,11 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         credits = int(u.get("credits") or 0)
         if credits <= 0:
-            await update.message.reply_text(tr(u, "no_credits"), parse_mode=ParseMode.MARKDOWN, reply_markup=kb_buy(u))
+            await update.message.reply_text(
+                tr(u, "no_credits"),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=kb_buy(u)
+            )
             return
         # reserve 1 credit immediately (prevents spam double-spend)
         user_set(user_id, credits=credits - 1)
@@ -812,7 +890,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_prompt = build_user_prompt(u, text)
 
     async with aiohttp.ClientSession() as session:
-        res = await piapi_chat(session, system_prompt, user_prompt)
+        res = await llm_chat(session, system_prompt, user_prompt)
 
     if not res.ok:
         # refund credit on failure (non-admin)
@@ -821,10 +899,16 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
 
         if res.status == 401:
-            await update.message.reply_text("❌ 401: ключ PiAPI не принят. Проверь PIAPI_KEY.", reply_markup=kb_main(user_get(user_id)))
+            await update.message.reply_text(
+                "❌ 401: ключ OpenRouter не принят. Проверь OPENROUTER_API_KEY.",
+                reply_markup=kb_main(user_get(user_id))
+            )
             return
 
-        await update.message.reply_text(tr(u, "gen_error") + f"\n\nDebug: {res.text}\n{res.raw[:600]}", reply_markup=kb_main(user_get(user_id)))
+        await update.message.reply_text(
+            tr(u, "gen_error") + f"\n\nDebug: {res.text}\n{res.raw[:600]}",
+            reply_markup=kb_main(user_get(user_id))
+        )
         return
 
     out = (res.text or "").strip()
@@ -840,6 +924,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb_main(u)
     )
 
+
 # =========================
 # ADMIN
 # =========================
@@ -854,13 +939,17 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur.execute("SELECT COUNT(*) as c FROM history")
     hist_count = cur.fetchone()["c"]
     conn.close()
-    await update.message.reply_text(f"Admin:\nUsers: {users_count}\nHistory: {hist_count}\nModel: {PIAPI_MODEL}")
+    await update.message.reply_text(
+        f"Admin:\nUsers: {users_count}\nHistory: {hist_count}\nModel: {OPENROUTER_MODEL}"
+    )
+
 
 # =========================
 # ERROR HANDLER
 # =========================
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
     log.exception("Unhandled error: %s", context.error)
+
 
 # =========================
 # MAIN
@@ -892,10 +981,13 @@ def build_app() -> Application:
     app.add_error_handler(on_error)
     return app
 
+
 def main():
     app = build_app()
     log.info("✅ MusicAi PRO started (polling)")
     app.run_polling(close_loop=False)
 
+
 if __name__ == "__main__":
     main()
+```0
