@@ -27,7 +27,7 @@ from telegram.ext import (
     filters,
 )
 
-# -------------------- ЛОГИ --------------------
+# -------------------- ЛОГИ (Для Render) --------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
@@ -35,16 +35,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MusicAi")
 
-# -------------------- ENV --------------------
+# -------------------- ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ --------------------
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PIAPI_KEY = os.getenv("PIAPI_KEY") 
 OWNER_ID = int(os.getenv("OWNER_TG_ID", "1225282893"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 if not BOT_TOKEN or not PIAPI_KEY:
-    raise RuntimeError("BOT_TOKEN или PIAPI_KEY не установлены в настройках Render!")
+    raise RuntimeError("КРИТИЧЕСКАЯ ОШИБКА: Токены не установлены в Render!")
 
-# -------------------- ЦЕНЫ --------------------
+# -------------------- ЦЕНЫ И ПАКЕТЫ --------------------
 PACKS = {"1": 250, "5": 1000, "25": 4000}
 
 # -------------------- БАЗА ДАННЫХ --------------------
@@ -106,7 +106,7 @@ def db_set(user_id: int, **kwargs):
 async def adb_get_user(uid): return await asyncio.to_thread(db_get_user, uid)
 async def adb_set(uid, **kwargs): await asyncio.to_thread(db_set, uid, **kwargs)
 
-# -------------------- ТЕКСТЫ (ВОССТАНОВЛЕНЫ ВСЕ ЯЗЫКИ) --------------------
+# -------------------- ТЕКСТЫ (ВСЕ 7 ЯЗЫКОВ И ВСЕ КЛЮЧИ) --------------------
 TEXTS = {
     "start": {
         "en": "🎵 *MusicAi*\n\nI create a full song in 5 minutes.\nLyrics, mood and style — personalised.\n\nPress START to begin 👇",
@@ -118,27 +118,30 @@ TEXTS = {
         "uk": "🎵 *MusicAi*\n\nЯ створюю повноцінну пісню за 5 хвилин.\nТекст, настрій та стиль — персонально.\n\nНатисни START, щоб почати 👇",
     },
     "choose_language": {"en": "Choose language:", "ru": "Выбери язык:", "pl": "Wybierz język:", "de": "Sprache auswählen:", "es": "Elige idioma:", "fr": "Choisissez la langue:", "uk": "Вибери мову:"},
-    "choose_theme": {"en": "Choose theme:", "ru": "Выбери тему:", "pl": "Wybierz temat:", "de": "Wähle ein Thema:", "es": "Elige tema:", "fr": "Choisissez un thème:", "uk": "Вибери тему:"},
-    "choose_genre": {"en": "Choose genre:", "ru": "Выбери жанр:", "pl": "Wybierz gatunek:", "de": "Wähle Genre:", "es": "Elige género:", "fr": "Choisissez un genre:", "uk": "Вибери жанр:"},
+    "choose_theme": {"en": "Choose theme:", "ru": "Выбери тему:", "pl": "Wybierz temat:", "de": "Wähle ein Thema:", "es": "Elige tema:", "fr": "Choisissez un thème:", "uk": "Виберіть тему:"},
+    "choose_genre": {"en": "Choose genre:", "ru": "Выбери жанр:", "pl": "Wybierz gatunek:", "de": "Wähle Genre:", "es": "Elige género:", "fr": "Choisissez un genre:", "uk": "Виберіть жанр:"},
     "describe": {
-        "en": "✍️ *Describe the song*\n\n1) Who is it for?\n2) Story / event\n3) Mood & emotions\n\n🎤 Or send a voice message.",
-        "ru": "✍️ *Опиши песню*\n\n1) Кому посвящается?\n2) История / событие\n3) Настроение и эмоции\n\n🎤 Если лень писать — отправь голосовое.",
-        "pl": "✍️ *Opisz piosenkę*\n\n1) Dla kogo?\n2) Historia / wydarzenie\n3) Klimat и emocje\n\n🎤 Jeśli не хочешь писать — вышли głosówkę.",
-        "de": "✍️ *Beschreibe das Lied*\n🎤 Sprachnachricht senden.",
-        "es": "✍️ *Describe la canción*\n🎤 Или отправь голосовое.",
-        "fr": "✍️ *Décris la chanson*\n🎤 Или отправь голосовое.",
-        "uk": "✍️ *Опиши пісню*\n🎤 Або надішли голосове.",
+        "en": "✍️ *Describe the song*\n\n🎤 Or send a voice message.",
+        "ru": "✍️ *Опиши песню*\n\n🎤 Или отправь голосовое.",
+        "pl": "✍️ *Opisz piosenkę*\n\n🎤 Lub wyślij głosówkę.",
+        "de": "✍️ *Beschreibe das Lied*\n\n🎤 Sprachnachricht senden.",
+        "es": "✍️ *Describe la canción*\n\n🎤 O envía un mensaje de voz.",
+        "fr": "✍️ *Décris la chanson*\n\n🎤 Ou envoie un vocal.",
+        "uk": "✍️ *Опиши пісню*\n\n🎤 Або надішли голосове.",
     },
     "help": {
-        "en": "ℹ️ *Help*\n\n✏️ Can I edit a ready song?\nNo — only generate again (−1 song).\n\n🎶 How many variants?\n2 variants per request.\n\n🔉 Stress issues?\nUse CAPS for stress: dIma.\n\n📄 Rights\nThe songs belong to you.",
-        "ru": "ℹ️ *Помощь*\n\n✏️ Можно ли изменить готовую песню?\nНет — только сгенерировать заново (−1 песня).\n\n🎶 Сколько вариантов?\n2 разных варианта на один запрос.\n\n🔉 Ударения?\nПиши ударение КАПСОМ: дИма.\n\n📄 Права\nПесни принадлежат тебе.",
-        "pl": "ℹ️ *Pomoc*\nNie można edytować готовых песен. 2 версии.",
-        "uk": "ℹ️ *Допомога*\nНе можна змінювати готове. 2 варіанти.",
+        "en": "ℹ️ *Help*\n\n✏️ Can I edit a song? No.\n🎶 2 variants per request.\n🔉 Use CAPS for stress: dIma.\n📄 Rights belong to you.",
+        "ru": "ℹ️ *Помощь*\n\n✏️ Можно изменить песню? Нет.\n🎶 2 варианта на запрос.\n🔉 Ударения КАПСОМ: дИма.\n📄 Права принадлежат вам.",
+        "pl": "ℹ️ *Pomoc*\n\n✏️ Czy mogę edytować? Nie.\n🎶 2 wersje.\n📄 Prawa są Twoje.",
+        "uk": "ℹ️ *Допомога*\n\n✏️ Чи можна змінити? Ні.\n🎶 2 варіанти.\n📄 Права ваші.",
     },
-    "custom_theme_ask": {"en": "✏️ Write your custom theme:", "ru": "✏️ Напиши свой вариант темы:", "pl": "✏️ Napisz temat:", "uk": "✏️ Напиши тему:"},
+    "custom_theme_ask": {"en": "✏️ Write theme:", "ru": "✏️ Напиши тему:", "pl": "✏️ Napisz temat:", "uk": "✏️ Напиши тему:"},
     "generating": {"en": "⏳ Generating...", "ru": "⏳ Генерирую...", "pl": "⏳ Generuję...", "uk": "⏳ Генерую..."},
-    "no_credits": {"en": "0 songs left. Buy pack 👇", "ru": "0 песен. Купи пакет 👇", "pl": "0 piosenek 👇", "uk": "0 пісень 👇"},
-    "paid": {"en": "✅ Payment successful!", "ru": "✅ Оплата прошла!", "pl": "✅ Opłacono!", "uk": "✅ Оплачено!"}
+    "demo_header": {"en": "🎧 *Demo*", "ru": "🎧 *Демо*", "pl": "🎧 *Demo*", "uk": "🎧 *Демо*"},
+    "no_credits": {"en": "0 songs. Buy 👇", "ru": "0 песен. Купи пакет 👇", "pl": "0 piosenek 👇", "uk": "0 пісень 👇"},
+    "paid": {"en": "✅ Paid!", "ru": "✅ Оплачено!", "pl": "✅ Opłacono!", "uk": "✅ Оплачено!"},
+    "temp_error": {"en": "⚠️ Error. Try later.", "ru": "⚠️ Ошибка. Попробуй позже.", "pl": "⚠️ Błąd.", "uk": "⚠️ Помилка."},
+    "buy_confirm": {"en": "Spend ⭐ {stars}?", "ru": "Потратить ⭐ {stars}?", "pl": "Wydać ⭐ {stars}?", "uk": "Витратити ⭐ {stars}?"},
 }
 
 THEMES = {
@@ -147,7 +150,7 @@ THEMES = {
     "holiday": {"en":"Holiday 🎉","ru":"Праздник 🎉","pl":"Święto 🎉","de":"Feier 🎉","es":"Fiesta 🎉","fr":"Fête 🎉","uk":"Свято 🎉"},
     "sad": {"en":"Sad 😢","ru":"Грусть 😢","pl":"Smutna 😢","de":"Traurig 😢","es":"Triste 😢","fr":"Triste 😢","uk":"Сум 😢"},
     "wedding": {"en":"Wedding 💍","ru":"Свадьба 💍","pl":"Wesele 💍","de":"Hochzeit 💍","es":"Boda 💍","fr":"Mariage 💍","uk":"Весілля 💍"},
-    "custom": {"en":"Custom ✏️","ru":"Свой вариант ✏️","pl":"Włаsny ✏️","de":"Eigene ✏️","es":"Tu вариант ✏️","fr":"Votre вариант ✏️","uk":"Свій варіант ✏️"},
+    "custom": {"en":"Custom ✏️","ru":"Свой вариант ✏️","pl":"Własny ✏️","de":"Eigene ✏️","es":"Tu вариант ✏️","fr":"Votre вариант ✏️","uk":"Свій варіант ✏️"},
 }
 
 def tr(lang, key): return TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("en", "Missing text"))
@@ -157,12 +160,13 @@ async def piapi_generate(prompt):
     url = "https://api.piapi.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {PIAPI_KEY}", "Content-Type": "application/json"}
     payload = {"model": "pi-music", "messages": [{"role": "user", "content": prompt}]}
-    timeout = aiohttp.ClientTimeout(total=180) # Ждем 3 минуты
+    timeout = aiohttp.ClientTimeout(total=180)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=payload, headers=headers) as r:
                 data = await r.json()
-                return data["choices"][0]["message"]["content"]
+                if "choices" in data: return data["choices"][0]["message"]["content"]
+                return None
     except: return None
 
 async def voice_to_text(file_path):
@@ -175,7 +179,31 @@ async def voice_to_text(file_path):
         return res.text
     except: return None
 
-# -------------------- HANDLERS --------------------
+# -------------------- КЛАВИАТУРЫ --------------------
+def kb_languages():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("English 🇬🇧", callback_data="lang_en"), InlineKeyboardButton("Русский 🇷🇺", callback_data="lang_ru")],
+        [InlineKeyboardButton("Polski 🇵🇱", callback_data="lang_pl"), InlineKeyboardButton("Deutsch 🇩🇪", callback_data="lang_de")],
+        [InlineKeyboardButton("Español 🇪🇸", callback_data="lang_es"), InlineKeyboardButton("Français 🇫🇷", callback_data="lang_fr")],
+        [InlineKeyboardButton("Українська 🇺🇦", callback_data="lang_uk")]
+    ])
+
+def kb_themes(lang):
+    kb = [
+        [InlineKeyboardButton(THEMES["love"][lang], callback_data="theme_love"), InlineKeyboardButton(THEMES["fun"][lang], callback_data="theme_fun")],
+        [InlineKeyboardButton(THEMES["holiday"][lang], callback_data="theme_holiday"), InlineKeyboardButton(THEMES["sad"][lang], callback_data="theme_sad")],
+        [InlineKeyboardButton(THEMES["wedding"][lang], callback_data="theme_wedding"), InlineKeyboardButton(THEMES["custom"][lang], callback_data="theme_custom")]
+    ]
+    return InlineKeyboardMarkup(kb)
+
+def kb_genres():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Pop", callback_data="genre_pop"), InlineKeyboardButton("Rap", callback_data="genre_rap")],
+        [InlineKeyboardButton("Rock", callback_data="genre_rock"), InlineKeyboardButton("Club", callback_data="genre_club")],
+        [InlineKeyboardButton("Classical", callback_data="genre_classical"), InlineKeyboardButton("Disco Polo", callback_data="genre_disco")]
+    ])
+
+# -------------------- ХЕНДЛЕРЫ --------------------
 async def post_init(app):
     await app.bot.set_my_commands([BotCommand("start", "Start"), BotCommand("help", "Help")])
 
@@ -197,11 +225,10 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang, state = u["lang"], u["state"]
 
     if q.data == "start":
-        await q.edit_message_text(tr(lang, "choose_language"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("English 🇬🇧", callback_data="lang_en"), InlineKeyboardButton("Русский 🇷🇺", callback_data="lang_ru")], [InlineKeyboardButton("Polski 🇵🇱", callback_data="lang_pl"), InlineKeyboardButton("Deutsch 🇩🇪", callback_data="lang_de")], [InlineKeyboardButton("Español 🇪🇸", callback_data="lang_es"), InlineKeyboardButton("Français 🇫🇷", callback_data="lang_fr")], [InlineKeyboardButton("Українська 🇺🇦", callback_data="lang_uk")]]))
+        await q.edit_message_text(tr(lang, "choose_language"), reply_markup=kb_languages())
     elif q.data.startswith("lang_"):
         new_lang = q.data[5:]; await adb_set(uid, lang=new_lang)
-        kb = [[InlineKeyboardButton(THEMES["love"][new_lang], callback_data="theme_love"), InlineKeyboardButton(THEMES["fun"][new_lang], callback_data="theme_fun")], [InlineKeyboardButton(THEMES["holiday"][new_lang], callback_data="theme_holiday"), InlineKeyboardButton(THEMES["sad"][new_lang], callback_data="theme_sad")], [InlineKeyboardButton(THEMES["wedding"][new_lang], callback_data="theme_wedding"), InlineKeyboardButton(THEMES["custom"][new_lang], callback_data="theme_custom")]]
-        await q.edit_message_text(tr(new_lang, "choose_theme"), reply_markup=InlineKeyboardMarkup(kb))
+        await q.edit_message_text(tr(new_lang, "choose_theme"), reply_markup=kb_themes(new_lang))
     elif q.data.startswith("theme_"):
         theme = q.data[6:]; state["theme"] = theme
         if theme == "custom":
@@ -209,7 +236,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(tr(lang, "custom_theme_ask"))
         else:
             await adb_set(uid, state=state)
-            await q.edit_message_text(tr(lang, "choose_genre"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Pop", callback_data="genre_pop"), InlineKeyboardButton("Rap", callback_data="genre_rap")], [InlineKeyboardButton("Rock", callback_data="genre_rock"), InlineKeyboardButton("Club", callback_data="genre_club")], [InlineKeyboardButton("Classical", callback_data="genre_classical"), InlineKeyboardButton("Disco Polo", callback_data="genre_disco")]]))
+            await q.edit_message_text(tr(lang, "choose_genre"), reply_markup=kb_genres())
     elif q.data.startswith("genre_"):
         state["genre"] = q.data[6:]; await adb_set(uid, state=state)
         await q.edit_message_text(tr(lang, "describe"), parse_mode="Markdown")
@@ -225,7 +252,7 @@ async def user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state.get("awaiting_custom"):
         state["custom_theme"] = update.message.text; state["awaiting_custom"] = False
         await adb_set(uid, state=state)
-        await update.message.reply_text(tr(lang, "choose_genre"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Pop", callback_data="genre_pop"), InlineKeyboardButton("Rap", callback_data="genre_rap")]]))
+        await update.message.reply_text(tr(lang, "choose_genre"), reply_markup=kb_genres())
         return
 
     if "genre" not in state:
@@ -245,14 +272,14 @@ async def user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt_text = update.message.text
 
     theme = state.get("custom_theme") or state.get("theme")
-    prompt = f"Song about {theme}, Genre: {state['genre']}, Story: {prompt_text}. Lang: {lang}"
+    prompt = f"Song about {theme}, Genre: {state['genre']}, Story: {prompt_text}. Language: {lang}. 2 variants."
     msg = await update.message.reply_text(tr(lang, "generating"))
 
     if u["demo_used"] == 0:
         res = await piapi_generate("DEMO: " + prompt)
         if res:
-            try: await msg.edit_text(res[:3500], parse_mode="Markdown")
-            except: await msg.edit_text(res[:3500])
+            try: await msg.edit_text(f"{tr(lang, 'demo_header')}\n\n{res[:3500]}", parse_mode="Markdown")
+            except: await msg.edit_text(f"{tr(lang, 'demo_header')}\n\n{res[:3500]}")
             await adb_set(uid, demo_used=1)
         else: await msg.edit_text(tr(lang, "temp_error"))
     elif u["songs"] > 0:
@@ -263,6 +290,7 @@ async def user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await adb_set(uid, songs=u["songs"]-1)
         else: await msg.edit_text(tr(lang, "temp_error"))
     else:
+        await msg.delete()
         await update.message.reply_text(tr(lang, "no_credits"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⭐ Buy 1 song", callback_data="pay_1")]]))
 
 async def pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
