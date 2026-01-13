@@ -133,10 +133,293 @@ TEXTS = {
         "uk": "✍️ *Опиши пісню*\n\n🎤 Або надішли голосове.",
     },
     "help": {
-        "en": "ℹ️ *Help*\n\n✏️ Can I edit a song? No.\n🎶 2 variants per request.\n🔉 Use CAPS for stress: dIma.\n📄 Rights belong to you.",
-        "ru": "ℹ️ *Помощь*\n\n✏️ Можно изменить песню? Нет.\n🎶 2 варианта на запрос.\n🔉 Ударения КАПСОМ: дИма.\n📄 Права принадлежат вам.",
-        "pl": "ℹ️ *Pomoc*\n\n✏️ Czy mogę edytować? Nie.\n🎶 2 wersje.\n📄 Prawa są Twoje.",
-        "uk": "ℹ️ *Допомога*\n\n✏️ Чи можна змінити? Ні.\n🎶 2 варіанти.\n📄 Права ваші.",
+        "ru": """ℹ️ *Помощь*
+
+Иногда при работе с MusicAi возникают повторяющиеся вопросы. Мы собрали самые частые из них с ответами 👇
+
+────────────────
+
+*Изменения и ошибки*
+
+✏️ *Можно ли изменить готовую песню?*
+Нет, только сгенерировать заново (−1 песня с баланса).
+
+🎶 *Сколько вариантов даётся при генерации?*
+При каждой генерации ты получаешь сразу два разных варианта песни. Это включено в цену (−1 песня с баланса).
+
+🔉 *Почему ошибки в ударениях/дикции?*
+Это особенность нейросети. Чтобы снизить риск, указывайте ударения прямо в тексте заглавной буквой, например: дИма, свЕта, натАша. Но помните — модель не всегда это учитывает на 100%.
+
+🎤 *Почему поменялся голос/стиль?*
+ИИ может интерпретировать по-своему. Не используйте имена артистов, а описывайте жанр, настроение, темп.
+
+❌ *Можно исправить только ударение?*
+Нет, любая правка = новая генерация.
+
+────────────────
+
+*Баланс и оплата*
+
+💸 *Почему списались песни без результата?*
+Возможен сбой, двойное нажатие или авто-генерация при лимите сообщений. В таких случаях мы восстанавливаем баланс + бонус.
+
+🏦 *Оплата прошла, а песен нет?*
+Если платёж не дошёл, банк вернёт его автоматически.
+
+↩️ *Можно ли вернуть деньги?*
+Да, при подтверждённой ошибке. В других случаях, нельзя, поэтому, перед нажатием кнопки Сгенерировать песню, хорошо прочитайте текст.
+
+🎁 *Почему нет бесплатной первой песни?*
+Каждая генерация стоит ресурсов.
+
+────────────────
+
+*Работа бота*
+
+🤖 *Почему песня создалась без согласия?*
+При лимите сообщений бот автоматически запускает генерацию (он предупреждает об этом).
+
+🔁 *Почему припев повторяется несколько раз?*
+Так было в тексте. Проверяйте перед запуском.
+
+────────────────
+
+*Технические вопросы*
+
+🎶 *Можно ли услышать музыку без слов до оплаты?*
+Нет, песня генерируется целиком.
+
+────────────────
+
+*Авторские права*
+
+📄 *Кому принадлежат песни?*
+Правообладатель — Вы как заказчик.
+
+🌍 *Можно публиковать в соцсетях или платформах как YouTube и др.?*
+Да, под своим именем или псевдонимом.""",
+        "en": """ℹ️ *Help*
+
+Here are the most frequently asked questions about MusicAi 👇
+
+────────────────
+
+*Changes and Errors*
+
+✏️ *Can I edit a finished song?*
+No, you can only generate a new one (−1 song from balance).
+
+🎶 *How many variants per generation?*
+Each generation gives you two different song variants. This is included in the price (−1 song from balance).
+
+🔉 *Why are there stress/pronunciation errors?*
+This is a neural network feature. To reduce risk, indicate stress with CAPS: dIma, natAsha. But remember — the model doesn't always follow this 100%.
+
+🎤 *Why did the voice/style change?*
+AI can interpret in its own way. Don't use artist names, describe genre, mood, tempo instead.
+
+❌ *Can I fix just the stress?*
+No, any edit = new generation.
+
+────────────────
+
+*Balance and Payment*
+
+💸 *Why were songs deducted without result?*
+Possible glitch, double click, or auto-generation at message limit. In such cases we restore balance + bonus.
+
+🏦 *Payment went through but no songs?*
+If payment didn't arrive, the bank will return it automatically.
+
+↩️ *Can I get a refund?*
+Yes, for confirmed errors. Otherwise no, so please read the text carefully before clicking Generate Song.
+
+🎁 *Why is there no free first song?*
+Each generation costs resources.
+
+────────────────
+
+*Bot Operations*
+
+🤖 *Why was a song created without consent?*
+At message limit, the bot automatically starts generation (it warns about this).
+
+🔁 *Why does the chorus repeat multiple times?*
+That's how it was in the text. Check before launching.
+
+────────────────
+
+*Technical Questions*
+
+🎶 *Can I hear music without words before payment?*
+No, the song is generated as a whole.
+
+────────────────
+
+*Copyright*
+
+📄 *Who owns the songs?*
+Rights holder — You as the customer.
+
+🌍 *Can I publish on social media or platforms like YouTube?*
+Yes, under your name or pseudonym.""",
+        "pl": """ℹ️ *Pomoc*
+
+Najczęściej zadawane pytania o MusicAi 👇
+
+────────────────
+
+*Zmiany i błędy*
+
+✏️ *Czy mogę edytować gotową piosenkę?*
+Nie, tylko wygenerować nową (−1 piosenka z salda).
+
+🎶 *Ile wariantów przy generacji?*
+Każda generacja daje dwa różne warianty. To jest w cenie (−1 piosenka z salda).
+
+🔉 *Dlaczego błędy w akcentach/dykcji?*
+To cecha sieci neuronowej. Aby zmniejszyć ryzyko, zaznacz akcent CAPS: dIma. Ale model nie zawsze to uwzględnia w 100%.
+
+────────────────
+
+*Saldo i płatności*
+
+💸 *Dlaczego odliczono piosenki bez wyniku?*
+Możliwy błąd, podwójne kliknięcie. W takich przypadkach przywracamy saldo + bonus.
+
+📄 *Kto jest właścicielem piosenek?*
+Ty jako klient.""",
+        "de": """ℹ️ *Hilfe*
+
+Die häufigsten Fragen zu MusicAi 👇
+
+────────────────
+
+*Änderungen und Fehler*
+
+✏️ *Kann ich ein fertiges Lied bearbeiten?*
+Nein, nur neu generieren (−1 Song vom Guthaben).
+
+🎶 *Wie viele Varianten pro Generierung?*
+Jede Generierung gibt zwei verschiedene Varianten. Dies ist im Preis enthalten (−1 Song).
+
+🔉 *Warum Betonungs-/Aussprachefehler?*
+Das ist eine Besonderheit des neuronalen Netzes. Um das Risiko zu verringern, markieren Sie die Betonung mit GROSSBUCHSTABEN: dIma.
+
+────────────────
+
+*Guthaben und Zahlung*
+
+💸 *Warum wurden Songs ohne Ergebnis abgezogen?*
+Möglicher Fehler, Doppelklick. In solchen Fällen stellen wir das Guthaben + Bonus wieder her.
+
+📄 *Wem gehören die Songs?*
+Rechteinhaber — Sie als Kunde.""",
+        "es": """ℹ️ *Ayuda*
+
+Las preguntas más frecuentes sobre MusicAi 👇
+
+────────────────
+
+*Cambios y errores*
+
+✏️ *¿Puedo editar una canción terminada?*
+No, solo generar una nueva (−1 canción del saldo).
+
+🎶 *¿Cuántas variantes por generación?*
+Cada generación da dos variantes diferentes. Esto está incluido en el precio (−1 canción).
+
+🔉 *¿Por qué errores de acentuación/dicción?*
+Es una característica de la red neuronal. Para reducir el riesgo, indique el acento con MAYÚSCULAS: dIma.
+
+────────────────
+
+*Saldo y pago*
+
+💸 *¿Por qué se dedujeron canciones sin resultado?*
+Posible error, doble clic. En tales casos restauramos el saldo + bonificación.
+
+📄 *¿A quién pertenecen las canciones?*
+Titular de derechos — Usted como cliente.""",
+        "fr": """ℹ️ *Aide*
+
+Les questions les plus fréquentes sur MusicAi 👇
+
+────────────────
+
+*Changements et erreurs*
+
+✏️ *Puis-je modifier une chanson finie?*
+Non, seulement en générer une nouvelle (−1 chanson du solde).
+
+🎶 *Combien de variantes par génération?*
+Chaque génération donne deux variantes différentes. C'est inclus dans le prix (−1 chanson).
+
+🔉 *Pourquoi des erreurs d'accentuation/diction?*
+C'est une caractéristique du réseau neuronal. Pour réduire le risque, indiquez l'accent en MAJUSCULES: dIma.
+
+────────────────
+
+*Solde et paiement*
+
+💸 *Pourquoi des chansons déduites sans résultat?*
+Erreur possible, double clic. Dans de tels cas, nous restaurons le solde + bonus.
+
+📄 *À qui appartiennent les chansons?*
+Titulaire des droits — Vous en tant que client.""",
+        "uk": """ℹ️ *Допомога*
+
+Найчастіші питання про MusicAi 👇
+
+────────────────
+
+*Зміни та помилки*
+
+✏️ *Чи можна змінити готову пісню?*
+Ні, тільки згенерувати знову (−1 пісня з балансу).
+
+🎶 *Скільки варіантів при генерації?*
+При кожній генерації ти отримуєш відразу два різних варіанти пісні. Це включено в ціну (−1 пісня з балансу).
+
+🔉 *Чому помилки в наголосах/дикції?*
+Це особливість нейромережі. Щоб знизити ризик, вказуйте наголоси прямо в тексті великою літерою, наприклад: дІма, свЕта, натАша.
+
+────────────────
+
+*Баланс та оплата*
+
+💸 *Чому списалися пісні без результату?*
+Можливий збій, подвійне натискання. У таких випадках ми відновлюємо баланс + бонус.
+
+📄 *Кому належать пісні?*
+Правовласник — Ви як замовник.""",
+    },
+    "balance": {
+        "en": "💰 *Balance*\n\nYou have {songs} songs available.",
+        "ru": "💰 *Баланс*\n\nУ вас доступно {songs} песен.",
+        "pl": "💰 *Saldo*\n\nMasz {songs} piosenek.",
+        "de": "💰 *Guthaben*\n\nSie haben {songs} Songs verfügbar.",
+        "es": "💰 *Saldo*\n\nTienes {songs} canciones disponibles.",
+        "fr": "💰 *Solde*\n\nVous avez {songs} chansons disponibles.",
+        "uk": "💰 *Баланс*\n\nУ вас доступно {songs} пісень.",
+    },
+    "current_song": {
+        "en": "🎵 *Current Song*\n\nNo active song generation.\n\nUse /start to create a new song.",
+        "ru": "🎵 *Текущая песня*\n\nНет активной генерации.\n\nИспользуйте /start для создания новой песни.",
+        "pl": "🎵 *Aktualna piosenka*\n\nBrak aktywnej generacji.\n\nUżyj /start aby utworzyć nową piosenkę.",
+        "de": "🎵 *Aktuelles Lied*\n\nKeine aktive Generierung.\n\nVerwenden Sie /start um ein neues Lied zu erstellen.",
+        "es": "🎵 *Canción actual*\n\nNo hay generación activa.\n\nUsa /start para crear una nueva canción.",
+        "fr": "🎵 *Chanson actuelle*\n\nAucune génération active.\n\nUtilisez /start pour créer une nouvelle chanson.",
+        "uk": "🎵 *Поточна пісня*\n\nНемає активної генерації.\n\nВикористовуйте /start для створення нової пісні.",
+    },
+    "buy_menu": {
+        "en": "🛒 *Buy Songs*\n\nChoose a package:",
+        "ru": "🛒 *Купить песни*\n\nВыбери пакет:",
+        "pl": "🛒 *Kup piosenki*\n\nWybierz pakiet:",
+        "de": "🛒 *Songs kaufen*\n\nWählen Sie ein Paket:",
+        "es": "🛒 *Comprar canciones*\n\nElige un paquete:",
+        "fr": "🛒 *Acheter des chansons*\n\nChoisissez un forfait:",
+        "uk": "🛒 *Купити пісні*\n\nОбери пакет:",
     },
     "custom_theme_ask": {"en": "✏️ Write theme:", "ru": "✏️ Напиши тему:", "pl": "✏️ Napisz temat:", "uk": "✏️ Напиши тему:"},
     "generating": {"en": "⏳ Generating...", "ru": "⏳ Генерирую...", "pl": "⏳ Generuję...", "uk": "⏳ Генерую...", "de": "⏳ Generiere...", "es": "⏳ Generando...", "fr": "⏳ Génération..."},
@@ -239,7 +522,14 @@ def kb_genres():
 
 # -------------------- ХЕНДЛЕРЫ --------------------
 async def post_init(app):
-    await app.bot.set_my_commands([BotCommand("start", "Start"), BotCommand("help", "Help")])
+    # Set bot menu commands (persistent left menu)
+    await app.bot.set_my_commands([
+        BotCommand("start", "🏠 Start"),
+        BotCommand("current", "🎵 Current Song"),
+        BotCommand("balance", "💰 Balance"),
+        BotCommand("buy", "🛒 Buy Songs"),
+        BotCommand("help", "ℹ️ Help")
+    ])
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -250,6 +540,25 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = await adb_get_user(update.effective_user.id)
     await update.message.reply_text(tr(u["lang"], "help"), parse_mode="Markdown")
+
+async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = await adb_get_user(update.effective_user.id)
+    await update.message.reply_text(tr(u["lang"], "balance").format(songs=u["songs"]), parse_mode="Markdown")
+
+async def current_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = await adb_get_user(update.effective_user.id)
+    # Could check state here if we're tracking current generation
+    await update.message.reply_text(tr(u["lang"], "current_song"), parse_mode="Markdown")
+
+async def buy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = await adb_get_user(update.effective_user.id)
+    lang = u["lang"]
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"1 song - ⭐ {PACKS['1']}", callback_data="pay_1")],
+        [InlineKeyboardButton(f"5 songs - ⭐ {PACKS['5']} (20% off)", callback_data="pay_5")],
+        [InlineKeyboardButton(f"25 songs - ⭐ {PACKS['25']} (36% off)", callback_data="pay_25")]
+    ])
+    await update.message.reply_text(tr(lang, "buy_menu"), reply_markup=kb, parse_mode="Markdown")
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -342,6 +651,9 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("balance", balance_cmd))
+    app.add_handler(CommandHandler("current", current_cmd))
+    app.add_handler(CommandHandler("buy", buy_cmd))
     app.add_handler(CallbackQueryHandler(buttons))
     app.add_handler(MessageHandler(filters.TEXT | filters.VOICE, user_input))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
