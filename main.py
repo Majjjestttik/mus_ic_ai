@@ -854,6 +854,105 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "noop":
         return
 
+    # Music generation flow
+    if data == "generate_music":
+        # Get pending lyrics from user context
+        lyrics = u.get("pending_lyrics")
+        topic = u.get("pending_topic", "Song")
+        style = u.get("pending_style", "Pop")
+        duration = u.get("pending_duration", 60)
+        
+        if not lyrics:
+            await query.message.reply_text("❌ Нет сохраненного текста. Отправьте новую тему.", reply_markup=kb_main(u))
+            return
+        
+        # Clear pending data
+        user_set(user_id, pending_lyrics=None, pending_topic=None, pending_style=None, pending_duration=None)
+        
+        await query.message.reply_text(f"🎵 Создаю 2 песни с этим текстом...")
+        
+        # Prepare song title and tags
+        song_title = topic[:50] if len(topic) <= 50 else topic[:47] + "..."
+        tags = style.lower()
+        
+        task_ids = []
+        async with aiohttp.ClientSession() as session:
+            # Generate first song
+            music_res1 = await piapi_generate_music(
+                session,
+                prompt_with_lyrics=lyrics,
+                title=song_title,
+                tags=tags,
+                duration=duration
+            )
+            
+            if music_res1.ok:
+                task_ids.append(music_res1.task_id)
+            else:
+                log.warning("PIAPI music generation 1 failed: %s", music_res1.text)
+            
+            # Generate second song with same lyrics
+            music_res2 = await piapi_generate_music(
+                session,
+                prompt_with_lyrics=lyrics,
+                title=song_title,
+                tags=tags,
+                duration=duration
+            )
+            
+            if music_res2.ok:
+                task_ids.append(music_res2.task_id)
+            else:
+                log.warning("PIAPI music generation 2 failed: %s", music_res2.text)
+        
+        # Report results
+        if len(task_ids) == 2:
+            await query.message.reply_text(
+                f"✅ Созданы 2 песни!\n\nПесня 1: {task_ids[0]}\nПесня 2: {task_ids[1]}"
+            )
+            history_add(user_id, topic, f"Generated 2 songs: {task_ids[0]}, {task_ids[1]}")
+        elif len(task_ids) == 1:
+            await query.message.reply_text(
+                f"✅ Создана 1 песня: {task_ids[0]}\n⚠️ Вторая песня не удалась"
+            )
+            history_add(user_id, topic, f"Generated 1 song: {task_ids[0]}")
+        else:
+            # refund credit on complete failure (non-admin)
+            if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
+                u2 = user_get(user_id)
+                user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
+            
+            await query.message.reply_text(
+                tr(u, "music_error"),
+                reply_markup=kb_main(user_get(user_id))
+            )
+            return
+
+        u = user_get(user_id)
+        await query.message.reply_text(
+            "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb_main(u)
+        )
+        return
+    
+    if data == "regenerate_lyrics":
+        # Get the original topic
+        topic = u.get("pending_topic")
+        if not topic:
+            await query.message.reply_text("❌ Тема не найдена. Отправьте новую тему.", reply_markup=kb_main(u))
+            return
+        
+        # Clear pending data and refund the credit (since they didn't use it for music)
+        user_set(user_id, pending_lyrics=None, pending_topic=None, pending_style=None, pending_duration=None)
+        
+        # Message the user to send new topic or just trigger regeneration
+        await query.message.reply_text(
+            f"🔄 Отправьте новую тему для песни, или отправьте ту же тему '{topic[:50]}...' для повторной генерации.",
+            reply_markup=kb_main(u)
+        )
+        return
+
     # Buy flow
     if data.startswith("buy:"):
         pack_id = data.split(":", 1)[1]
@@ -1041,71 +1140,25 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history_add(user_id, text, lyrics_with_structure)
     log.info(f"Generated lyrics for user {user_id}: {len(lyrics_with_structure)} chars")
     
-    # Step 2: Generate 2 songs with same lyrics using PIAPI
-    await update.message.reply_text(f"✅ Текст готов! 🎵 Создаю 2 песни...")
+    # Store lyrics and generation parameters in user context for later music generation
+    user_set(user_id, 
+             pending_lyrics=lyrics_with_structure,
+             pending_topic=text,
+             pending_style=style,
+             pending_duration=duration)
     
-    # Prepare song title and tags
-    song_title = text[:50] if len(text) <= 50 else text[:47] + "..."
-    tags = style.lower()
+    # Show lyrics to user with buttons to either regenerate or create music
+    lyrics_preview = lyrics_with_structure if len(lyrics_with_structure) <= 3000 else lyrics_with_structure[:3000] + "\n\n..."
     
-    task_ids = []
-    async with aiohttp.ClientSession() as session:
-        # Generate first song
-        music_res1 = await piapi_generate_music(
-            session,
-            prompt_with_lyrics=lyrics_with_structure,
-            title=song_title,
-            tags=tags,
-            duration=duration
-        )
-        
-        if music_res1.ok:
-            task_ids.append(music_res1.task_id)
-        else:
-            log.warning("PIAPI music generation 1 failed: %s", music_res1.text)
-        
-        # Generate second song with same lyrics
-        music_res2 = await piapi_generate_music(
-            session,
-            prompt_with_lyrics=lyrics_with_structure,
-            title=song_title,
-            tags=tags,
-            duration=duration
-        )
-        
-        if music_res2.ok:
-            task_ids.append(music_res2.task_id)
-        else:
-            log.warning("PIAPI music generation 2 failed: %s", music_res2.text)
+    buttons = [
+        [InlineKeyboardButton("🎵 Сгенерировать песню", callback_data="generate_music")],
+        [InlineKeyboardButton("🔄 Изменить текст", callback_data="regenerate_lyrics")],
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
     
-    # Report results
-    if len(task_ids) == 2:
-        await update.message.reply_text(
-            f"✅ Созданы 2 песни!\n\nПесня 1: {task_ids[0]}\nПесня 2: {task_ids[1]}"
-        )
-        history_add(user_id, text, f"Generated 2 songs: {task_ids[0]}, {task_ids[1]}")
-    elif len(task_ids) == 1:
-        await update.message.reply_text(
-            f"✅ Создана 1 песня: {task_ids[0]}\n⚠️ Вторая песня не удалась"
-        )
-        history_add(user_id, text, f"Generated 1 song: {task_ids[0]}")
-    else:
-        # refund credit on complete failure (non-admin)
-        if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
-            u2 = user_get(user_id)
-            user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
-        
-        await update.message.reply_text(
-            tr(u, "music_error"),
-            reply_markup=kb_main(user_get(user_id))
-        )
-        return
-
-    u = user_get(user_id)
     await update.message.reply_text(
-        "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=kb_main(u)
+        f"✅ Текст песни готов!\n\n{lyrics_preview}",
+        reply_markup=keyboard
     )
 
 
