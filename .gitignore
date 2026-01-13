@@ -1,0 +1,5 @@
+musicai.db
+__pycache__/
+*.ogg
+*.pyc
+.env
