@@ -5,6 +5,7 @@ import sys
 import json
 import sqlite3
 import asyncio
+import tempfile
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
@@ -41,7 +42,6 @@ class TestDatabase:
     def setup_method(self):
         """Set up test database"""
         # Use a temporary database file for testing
-        import tempfile
         self.test_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
         self.test_db.close()
         self.original_db_path = main.DB_PATH
@@ -197,16 +197,16 @@ class TestOpenAIIntegration:
             mock_openai.return_value = mock_client
             
             # Create a temporary test file
-            test_file = "/tmp/test_voice.ogg"
-            with open(test_file, "w") as f:
-                f.write("test")
+            test_file = tempfile.NamedTemporaryFile(delete=False, suffix='.ogg')
+            test_file.write(b"test")
+            test_file.close()
             
             try:
-                result = await main.voice_to_text(test_file)
+                result = await main.voice_to_text(test_file.name)
                 assert result == "Transcribed text"
             finally:
-                if os.path.exists(test_file):
-                    os.remove(test_file)
+                if os.path.exists(test_file.name):
+                    os.remove(test_file.name)
 
 
 class TestHandlers:
@@ -214,7 +214,6 @@ class TestHandlers:
     
     def setup_method(self):
         """Set up test database"""
-        import tempfile
         self.test_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
         self.test_db.close()
         self.original_db_path = main.DB_PATH
