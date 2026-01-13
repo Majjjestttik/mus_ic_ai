@@ -10,6 +10,7 @@ import asyncio
 from typing import Optional, Dict, Any
 
 import aiohttp
+from openai import AsyncOpenAI
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -37,12 +38,11 @@ logger = logging.getLogger("MusicAi")
 
 # -------------------- ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ --------------------
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-PIAPI_KEY = os.getenv("PIAPI_KEY") 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OWNER_ID = int(os.getenv("OWNER_TG_ID", "1225282893"))
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-if not BOT_TOKEN or not PIAPI_KEY:
-    raise RuntimeError("КРИТИЧЕСКАЯ ОШИБКА: Токены не установлены в Render!")
+if not BOT_TOKEN or not OPENAI_API_KEY:
+    raise RuntimeError("КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN и OPENAI_API_KEY должны быть установлены!")
 
 # -------------------- ЦЕНЫ И ПАКЕТЫ --------------------
 PACKS = {"1": 250, "5": 1000, "25": 4000}
@@ -156,23 +156,29 @@ THEMES = {
 def tr(lang, key): return TEXTS.get(key, {}).get(lang, TEXTS.get(key, {}).get("en", "Missing text"))
 
 # -------------------- API --------------------
-async def piapi_generate(prompt):
-    url = "https://api.piapi.ai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {PIAPI_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "pi-music", "messages": [{"role": "user", "content": prompt}]}
-    timeout = aiohttp.ClientTimeout(total=180)
+async def openai_generate_song(prompt):
+    """Generate a song using OpenAI API"""
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=payload, headers=headers) as r:
-                data = await r.json()
-                if "choices" in data: return data["choices"][0]["message"]["content"]
-                return None
-    except: return None
+        client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        
+        response = await client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a creative songwriting assistant. Create complete song lyrics with verses, chorus, and structure based on the user's description. Be creative and match the requested genre, theme, and language."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1500,
+            temperature=0.8
+        )
+        
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error(f"OpenAI API error: {e}")
+        return None
 
 async def voice_to_text(file_path):
     if not OPENAI_API_KEY: return None
     try:
-        from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=OPENAI_API_KEY)
         with open(file_path, "rb") as f:
             res = await client.audio.transcriptions.create(model="whisper-1", file=f)
@@ -276,14 +282,14 @@ async def user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text(tr(lang, "generating"))
 
     if u["demo_used"] == 0:
-        res = await piapi_generate("DEMO: " + prompt)
+        res = await openai_generate_song("DEMO: " + prompt)
         if res:
             try: await msg.edit_text(f"{tr(lang, 'demo_header')}\n\n{res[:3500]}", parse_mode="Markdown")
             except: await msg.edit_text(f"{tr(lang, 'demo_header')}\n\n{res[:3500]}")
             await adb_set(uid, demo_used=1)
         else: await msg.edit_text(tr(lang, "temp_error"))
     elif u["songs"] > 0:
-        res = await piapi_generate("FULL SONG: " + prompt)
+        res = await openai_generate_song("FULL SONG: " + prompt)
         if res:
             try: await msg.edit_text(res[:3900], parse_mode="Markdown")
             except: await msg.edit_text(res[:3900])
