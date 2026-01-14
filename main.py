@@ -603,7 +603,6 @@ def kb_generate_song(u: Dict[str, Any]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
-
 # =========================
 # COMMANDS
 # =========================
