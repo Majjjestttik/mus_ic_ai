@@ -15,7 +15,7 @@ import time
 import asyncio
 import logging
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Tuple, List
 
 import aiohttp
@@ -288,6 +288,9 @@ TXT = {
         "no_suno_key": "❌ Suno API не настроен. Обратись к администратору.",
         "suno_error": "❌ Ошибка генерации музыки. Попробуй позже.",
         "suno_timeout": "⏳ Генерация музыки заняла слишком много времени. Попробуй позже.",
+        "song_data_expired": "❌ Данные песни устарели. Пожалуйста, сгенерируй текст заново.",
+        "no_lyrics_found": "❌ Текст не найден. Сначала сгенерируй текст песни.",
+        "all_songs_sent": "✅ Все песни отправлены!",
     },
     "en": {
         "start": "🎵 *MusicAi PRO*\n\nSend a song topic in one message.\n\n⭐ Billing: each generation costs *1 credit*. Buy credits with *Telegram Stars*.",
@@ -321,6 +324,9 @@ TXT = {
         "no_suno_key": "❌ Suno API not configured. Contact administrator.",
         "suno_error": "❌ Music generation error. Try later.",
         "suno_timeout": "⏳ Music generation took too long. Try later.",
+        "song_data_expired": "❌ Song data expired. Please generate lyrics again.",
+        "no_lyrics_found": "❌ No lyrics found. Please generate lyrics first.",
+        "all_songs_sent": "✅ All songs sent!",
     }
 }
 
@@ -573,12 +579,8 @@ async def llm_chat(session: aiohttp.ClientSession, system_prompt: str, user_prom
 class SunoResult:
     ok: bool
     task_id: str = ""
-    audio_urls: List[str] = None
+    audio_urls: List[str] = field(default_factory=list)
     error: str = ""
-    
-    def __post_init__(self):
-        if self.audio_urls is None:
-            self.audio_urls = []
 
 
 async def suno_generate_song(
@@ -945,7 +947,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             song_data = context.user_data.get(requesting_user_id)
             if not song_data:
                 await query.message.reply_text(
-                    "❌ Song data expired. Please generate lyrics again.",
+                    tr(u, "song_data_expired"),
                     reply_markup=kb_main(u)
                 )
                 return
@@ -956,7 +958,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if not lyrics:
                 await query.message.reply_text(
-                    "❌ No lyrics found. Please generate lyrics first.",
+                    tr(u, "no_lyrics_found"),
                     reply_markup=kb_main(u)
                 )
                 return
@@ -1009,7 +1011,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             )
                     
                     await query.message.reply_text(
-                        "✅ All songs sent!",
+                        tr(u, "all_songs_sent"),
                         reply_markup=kb_main(u)
                     )
                 else:
