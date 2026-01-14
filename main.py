@@ -15,7 +15,7 @@ import time
 import asyncio
 import logging
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, Tuple, List
 
 import aiohttp
@@ -50,6 +50,10 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
+
+SUNO_API_KEY = os.getenv("SUNO_API_KEY", "").strip()
+SUNO_API_URL = os.getenv("SUNO_API_URL", "https://api.sunoapi.org").strip()
+SUNO_MODEL = os.getenv("SUNO_MODEL", "chirp-v3-5").strip()
 
 ADMIN_ID = int((os.getenv("ADMIN_ID", "0") or "0").strip())
 
@@ -262,8 +266,8 @@ TXT = {
                 "/reset — сброс\n"
                 "/buy — купить кредиты (Stars)\n\n"
                 "Просто напиши тему песни — я верну текст + *Style Prompt* для Suno.",
-        "need_topic": "Напиши тему песни одним сообщением ".
-      "busy": "⏳ Генерирую…",
+        "need_topic": "Напиши тему песни одним сообщением 🙂",
+        "busy": "⏳ Генерирую…",
         "no_key": "❌ Нет OPENROUTER_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
         "cooldown": "⏳ Слишком часто. Подожди немного.",
         "daily_limit": "🚫 Дневной лимит исчерпан. Попробуй завтра.",
@@ -274,11 +278,21 @@ TXT = {
         "history_empty": "История пустая.",
         "gen_error": "❌ Ошибка генерации. Попробуй позже.",
         "no_credits": "🚫 Нет кредитов. Нажми ⭐ *Buy* и оплати Stars, потом попробуй снова.",
+        "done": "✅ Готово.",
         "credits": "⭐ Credits: *{credits}*",
         "buy_title": "⭐ Купить кредиты",
         "buy_text": "Выбери пакет. Оплата в Telegram Stars (XTR). После оплаты кредиты начислятся автоматически.",
         "buy_ok": "✅ Оплата прошла! Начислил кредиты: +{add}. Сейчас у тебя: {credits}.",
         "buy_fail": "❌ Оплата не прошла или отменена.",
+        "generate_music": "🎵 Сгенерировать музыку",
+        "generating_music": "🎵 Генерирую музыку через Suno AI... Это займёт ~1 минуту.",
+        "music_ready": "✅ Готово! Вот твои песни:",
+        "no_suno_key": "❌ Suno API не настроен. Обратись к администратору.",
+        "suno_error": "❌ Ошибка генерации музыки. Попробуй позже.",
+        "suno_timeout": "⏳ Генерация музыки заняла слишком много времени. Попробуй позже.",
+        "song_data_expired": "❌ Данные песни устарели. Пожалуйста, сгенерируй текст заново.",
+        "no_lyrics_found": "❌ Текст не найден. Сначала сгенерируй текст песни.",
+        "all_songs_sent": "✅ Все песни отправлены!",
     },
     "en": {
         "start": "🎵 *MusicAi PRO*\n\nSend a song topic in one message.\n\n⭐ Billing: each generation costs *1 credit*. Buy credits with *Telegram Stars*.",
@@ -301,11 +315,21 @@ TXT = {
         "history_empty": "History is empty.",
         "gen_error": "❌ Generation error. Try later.",
         "no_credits": "🚫 No credits. Tap ⭐ *Buy* and pay with Stars, then retry.",
+        "done": "✅ Done!",
         "credits": "⭐ Credits: *{credits}*",
         "buy_title": "⭐ Buy credits",
         "buy_text": "Choose a pack. Payment in Telegram Stars (XTR). Credits are added automatically after payment.",
         "buy_ok": "✅ Payment successful! Added credits: +{add}. You now have: {credits}.",
         "buy_fail": "❌ Payment failed or canceled.",
+        "generate_music": "🎵 Generate Music",
+        "generating_music": "🎵 Generating music via Suno AI... This will take ~1 minute.",
+        "music_ready": "✅ Done! Here are your songs:",
+        "no_suno_key": "❌ Suno API not configured. Contact administrator.",
+        "suno_error": "❌ Music generation error. Try later.",
+        "suno_timeout": "⏳ Music generation took too long. Try later.",
+        "song_data_expired": "❌ Song data expired. Please generate lyrics again.",
+        "no_lyrics_found": "❌ No lyrics found. Please generate lyrics first.",
+        "all_songs_sent": "✅ All songs sent!",
     }
 }
 
@@ -552,6 +576,156 @@ async def llm_chat(session: aiohttp.ClientSession, system_prompt: str, user_prom
 
 
 # =========================
+# SUNO API CLIENT
+# =========================
+@dataclass
+class SunoResult:
+    ok: bool
+    task_id: str = ""
+    audio_urls: List[str] = field(default_factory=list)
+    error: str = ""
+
+
+async def suno_generate_song(
+    session: aiohttp.ClientSession,
+    lyrics: str,
+    style: str,
+    title: str = "AI Generated Song"
+) -> SunoResult:
+    """
+    Submit a song generation request to Suno API.
+    Returns a SunoResult with task_id for polling.
+    """
+    if not SUNO_API_KEY:
+        return SunoResult(ok=False, error="NO_SUNO_KEY")
+    
+    headers = {
+        "Authorization": f"Bearer {SUNO_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    payload = {
+        "custom_mode": True,
+        "instrumental": False,
+        "prompt": lyrics,
+        "style": style,
+        "title": title,
+        "model": SUNO_MODEL,
+    }
+    
+    try:
+        async with session.post(
+            f"{SUNO_API_URL}/api/v1/generate",
+            headers=headers,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as resp:
+            if resp.status != 200:
+                error_text = await resp.text()
+                log.error(f"Suno API error: {resp.status} - {error_text}")
+                return SunoResult(ok=False, error=f"HTTP_{resp.status}")
+            
+            data = await resp.json()
+            task_id = data.get("data", {}).get("taskId") or data.get("taskId", "")
+            
+            if not task_id:
+                return SunoResult(ok=False, error="NO_TASK_ID")
+            
+            return SunoResult(ok=True, task_id=task_id)
+    
+    except asyncio.TimeoutError:
+        return SunoResult(ok=False, error="TIMEOUT")
+    except Exception as e:
+        log.exception("Suno generate error")
+        return SunoResult(ok=False, error=f"EXC: {e}")
+
+
+async def suno_poll_task(
+    session: aiohttp.ClientSession,
+    task_id: str,
+    max_attempts: int = 40,
+    poll_interval: int = 15
+) -> SunoResult:
+    """
+    Poll Suno API for task completion and retrieve audio URLs.
+    Typically takes 30-60 seconds for Suno to generate songs.
+    """
+    if not SUNO_API_KEY:
+        return SunoResult(ok=False, error="NO_SUNO_KEY")
+    
+    headers = {
+        "Authorization": f"Bearer {SUNO_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    for attempt in range(max_attempts):
+        try:
+            async with session.get(
+                f"{SUNO_API_URL}/api/v1/task/{task_id}",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    log.error(f"Suno poll error: {resp.status} - {error_text}")
+                    return SunoResult(ok=False, task_id=task_id, error=f"HTTP_{resp.status}")
+                
+                data = await resp.json()
+                status = data.get("status", "").lower()
+                
+                # Check for completion
+                if status in ("complete", "completed", "success"):
+                    # Extract audio URLs
+                    audio_urls = []
+                    
+                    # Try different response formats
+                    if "output" in data:
+                        for item in data.get("output", []):
+                            if isinstance(item, dict) and "audio_url" in item:
+                                audio_urls.append(item["audio_url"])
+                    elif "audio_url" in data:
+                        audio_urls.append(data["audio_url"])
+                    elif "data" in data:
+                        data_obj = data["data"]
+                        if isinstance(data_obj, dict):
+                            if "audio_url" in data_obj:
+                                audio_urls.append(data_obj["audio_url"])
+                            elif "clips" in data_obj:
+                                for clip in data_obj.get("clips", []):
+                                    if "audio_url" in clip:
+                                        audio_urls.append(clip["audio_url"])
+                    
+                    if audio_urls:
+                        log.info(f"Suno task {task_id} completed with {len(audio_urls)} audio files")
+                        return SunoResult(ok=True, task_id=task_id, audio_urls=audio_urls)
+                    else:
+                        log.warning(f"Suno task {task_id} completed but no audio URLs found")
+                        return SunoResult(ok=False, task_id=task_id, error="NO_AUDIO_URLS")
+                
+                # Check for failure
+                if status in ("failed", "error"):
+                    error_msg = data.get("error", "Unknown error")
+                    log.error(f"Suno task {task_id} failed: {error_msg}")
+                    return SunoResult(ok=False, task_id=task_id, error=f"FAILED: {error_msg}")
+                
+                # Still processing, wait and retry
+                log.info(f"Suno task {task_id} status: {status}, attempt {attempt + 1}/{max_attempts}")
+                await asyncio.sleep(poll_interval)
+        
+        except asyncio.TimeoutError:
+            log.warning(f"Suno poll timeout for task {task_id}, attempt {attempt + 1}")
+            await asyncio.sleep(poll_interval)
+            continue
+        except Exception as e:
+            log.exception(f"Suno poll exception for task {task_id}")
+            await asyncio.sleep(poll_interval)
+            continue
+    
+    # Max attempts reached
+    return SunoResult(ok=False, task_id=task_id, error="TIMEOUT_MAX_ATTEMPTS")
+
+
+# =========================
 # KEYBOARDS
 # =========================
 def kb_main(u: Dict[str, Any]) -> InlineKeyboardMarkup:
@@ -757,6 +931,117 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(tr(u, "busy"))
         await send_stars_invoice(update, context, pack_id)
         return
+    
+    # Suno music generation flow
+    if data.startswith("suno:generate:"):
+        parts = data.split(":")
+        if len(parts) >= 3:
+            requesting_user_id = int(parts[2])
+            
+            # Security: Validate that the requesting user matches the callback user
+            if requesting_user_id != user_id:
+                log.warning(f"User {user_id} attempted to access user {requesting_user_id}'s song data")
+                await query.message.reply_text(
+                    "❌ Unauthorized access",
+                    reply_markup=kb_main(u)
+                )
+                return
+            
+            # Check if Suno API is configured
+            if not SUNO_API_KEY:
+                await query.message.reply_text(tr(u, "no_suno_key"), reply_markup=kb_main(u))
+                return
+            
+            # Get stored song data from context
+            if not hasattr(context, 'user_data') or context.user_data is None:
+                context.user_data = {}
+            
+            song_data = context.user_data.get(requesting_user_id)
+            if not song_data:
+                await query.message.reply_text(
+                    tr(u, "song_data_expired"),
+                    reply_markup=kb_main(u)
+                )
+                return
+            
+            lyrics = song_data.get("lyrics", "")
+            style = song_data.get("style", "Pop, Medium Energy")
+            title = song_data.get("title", "AI Song")
+            
+            if not lyrics:
+                await query.message.reply_text(
+                    tr(u, "no_lyrics_found"),
+                    reply_markup=kb_main(u)
+                )
+                return
+            
+            # Send status message
+            await query.message.reply_text(tr(u, "generating_music"))
+            
+            # Generate music via Suno API
+            async with aiohttp.ClientSession() as session:
+                # Step 1: Submit generation request
+                gen_result = await suno_generate_song(session, lyrics, style, title)
+                
+                if not gen_result.ok:
+                    error_msg = tr(u, "suno_error")
+                    if gen_result.error == "NO_SUNO_KEY":
+                        error_msg = tr(u, "no_suno_key")
+                    log.error(f"Suno generation failed: {gen_result.error}")
+                    await query.message.reply_text(error_msg, reply_markup=kb_main(u))
+                    return
+                
+                log.info(f"Suno task created: {gen_result.task_id}")
+                
+                # Step 2: Poll for completion
+                poll_result = await suno_poll_task(session, gen_result.task_id)
+                
+                if not poll_result.ok:
+                    error_msg = tr(u, "suno_error")
+                    if "TIMEOUT" in poll_result.error:
+                        error_msg = tr(u, "suno_timeout")
+                    log.error(f"Suno polling failed: {poll_result.error}")
+                    await query.message.reply_text(error_msg, reply_markup=kb_main(u))
+                    return
+                
+                # Step 3: Send audio files to user
+                if poll_result.audio_urls:
+                    await query.message.reply_text(tr(u, "music_ready"))
+                    
+                    for idx, audio_url in enumerate(poll_result.audio_urls, 1):
+                        # Basic URL validation for security
+                        if not audio_url or not isinstance(audio_url, str):
+                            log.warning(f"Invalid audio URL format: {audio_url}")
+                            continue
+                        
+                        # Ensure URL uses HTTPS protocol for security
+                        if not audio_url.startswith("https://"):
+                            log.warning(f"Skipping non-HTTPS audio URL: {audio_url}")
+                            continue
+                        
+                        try:
+                            # Send audio as URL (Telegram will render as audio player)
+                            await query.message.reply_audio(
+                                audio=audio_url,
+                                caption=f"🎵 Song {idx}/{len(poll_result.audio_urls)}"
+                            )
+                        except Exception as e:
+                            log.error(f"Failed to send audio {idx}: {e}")
+                            # Fallback: send as text link
+                            await query.message.reply_text(
+                                f"🎵 Song {idx}: {audio_url}"
+                            )
+                    
+                    await query.message.reply_text(
+                        tr(u, "all_songs_sent"),
+                        reply_markup=kb_main(u)
+                    )
+                else:
+                    await query.message.reply_text(
+                        tr(u, "suno_error"),
+                        reply_markup=kb_main(u)
+                    )
+        return
 
     if data.startswith("menu:"):
         section = data.split(":", 1)[1]
@@ -914,15 +1199,46 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     out = (res.text or "").strip()
     history_add(user_id, text, out)
 
+    # Store generated song in context for the "Generate Music" button
+    # Extract style prompt from the output
+    style_prompt = ""
+    lyrics = out
+    if "Style Prompt:" in out:
+        parts = out.rsplit("Style Prompt:", 1)
+        if len(parts) == 2:
+            lyrics = parts[0].strip()
+            style_prompt = parts[1].strip()
+    
+    # Store in user context for callback handler
+    if not hasattr(context, 'user_data') or context.user_data is None:
+        context.user_data = {}
+    context.user_data[user_id] = {
+        "lyrics": lyrics,
+        "style": style_prompt,
+        "title": text[:50],  # Use first 50 chars of prompt as title
+    }
+
     for part in split_text(out, MAX_TG_MESSAGE):
         await update.message.reply_text(part)
 
+    # Create keyboard with "Generate Music" button if Suno API is configured
     u = user_get(user_id)
-    await update.message.reply_text(
-        "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=kb_main(u)
-    )
+    if SUNO_API_KEY:
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(tr(u, "generate_music"), callback_data=f"suno:generate:{user_id}")],
+            [InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")],
+        ])
+        await update.message.reply_text(
+            tr(u, "done") + "\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb
+        )
+    else:
+        await update.message.reply_text(
+            tr(u, "done") + "\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb_main(u)
+        )
 
 
 # =========================
