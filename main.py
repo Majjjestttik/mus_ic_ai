@@ -277,6 +277,7 @@ TXT = {
         "history_empty": "История пустая.",
         "gen_error": "❌ Ошибка генерации. Попробуй позже.",
         "no_credits": "🚫 Нет кредитов. Нажми ⭐ *Buy* и оплати Stars, потом попробуй снова.",
+        "done": "✅ Готово.",
         "credits": "⭐ Credits: *{credits}*",
         "buy_title": "⭐ Купить кредиты",
         "buy_text": "Выбери пакет. Оплата в Telegram Stars (XTR). После оплаты кредиты начислятся автоматически.",
@@ -313,6 +314,7 @@ TXT = {
         "history_empty": "History is empty.",
         "gen_error": "❌ Generation error. Try later.",
         "no_credits": "🚫 No credits. Tap ⭐ *Buy* and pay with Stars, then retry.",
+        "done": "✅ Done!",
         "credits": "⭐ Credits: *{credits}*",
         "buy_title": "⭐ Buy credits",
         "buy_text": "Choose a pack. Payment in Telegram Stars (XTR). Credits are added automatically after payment.",
@@ -1207,13 +1209,13 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")],
         ])
         await update.message.reply_text(
-            "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
+            tr(u, "done") + "\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=kb
         )
     else:
         await update.message.reply_text(
-            "✅ Готово.\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
+            tr(u, "done") + "\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=kb_main(u)
         )
