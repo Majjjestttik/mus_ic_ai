@@ -19,6 +19,7 @@ The following environment variables are required:
 - `OPENROUTER_API_KEY`: API key for OpenRouter (lyrics generation)
 - `SUNO_API_KEY`: API key for Suno AI (music generation) - optional
 - `SUNO_API_URL`: Suno API endpoint URL (default: `https://api.sunoapi.org`)
+- `SUNO_MODEL`: Suno AI model version (default: `chirp-v3-5`)
 - `ADMIN_ID`: Telegram user ID for admin (optional)
 
 ## Setup

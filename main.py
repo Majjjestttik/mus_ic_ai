@@ -53,6 +53,7 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
 
 SUNO_API_KEY = os.getenv("SUNO_API_KEY", "").strip()
 SUNO_API_URL = os.getenv("SUNO_API_URL", "https://api.sunoapi.org").strip()
+SUNO_MODEL = os.getenv("SUNO_MODEL", "chirp-v3-5").strip()
 
 ADMIN_ID = int((os.getenv("ADMIN_ID", "0") or "0").strip())
 
@@ -609,7 +610,7 @@ async def suno_generate_song(
         "prompt": lyrics,
         "style": style,
         "title": title,
-        "model": "chirp-v3-5",
+        "model": SUNO_MODEL,
     }
     
     try:
@@ -937,6 +938,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) >= 3:
             requesting_user_id = int(parts[2])
             
+            # Security: Validate that the requesting user matches the callback user
+            if requesting_user_id != user_id:
+                log.warning(f"User {user_id} attempted to access user {requesting_user_id}'s song data")
+                await query.message.reply_text(
+                    "❌ Unauthorized access",
+                    reply_markup=kb_main(u)
+                )
+                return
+            
             # Check if Suno API is configured
             if not SUNO_API_KEY:
                 await query.message.reply_text(tr(u, "no_suno_key"), reply_markup=kb_main(u))
@@ -999,6 +1009,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await query.message.reply_text(tr(u, "music_ready"))
                     
                     for idx, audio_url in enumerate(poll_result.audio_urls, 1):
+                        # Basic URL validation for security
+                        if not audio_url or not isinstance(audio_url, str):
+                            log.warning(f"Invalid audio URL format: {audio_url}")
+                            continue
+                        
+                        # Ensure URL uses HTTPS protocol for security
+                        if not audio_url.startswith("https://"):
+                            log.warning(f"Skipping non-HTTPS audio URL: {audio_url}")
+                            continue
+                        
                         try:
                             # Send audio as URL (Telegram will render as audio player)
                             await query.message.reply_audio(
