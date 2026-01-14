@@ -262,8 +262,8 @@ TXT = {
                 "/reset — сброс\n"
                 "/buy — купить кредиты (Stars)\n\n"
                 "Просто напиши тему песни — я верну текст + *Style Prompt* для Suno.",
-        "need_topic": "Напиши тему песни одним сообщением ".
-      "busy": "⏳ Генерирую…",
+        "need_topic": "Напиши тему песни одним сообщением 🙂",
+        "busy": "⏳ Генерирую…",
         "no_key": "❌ Нет OPENROUTER_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
         "cooldown": "⏳ Слишком часто. Подожди немного.",
         "daily_limit": "🚫 Дневной лимит исчерпан. Попробуй завтра.",
@@ -279,6 +279,8 @@ TXT = {
         "buy_text": "Выбери пакет. Оплата в Telegram Stars (XTR). После оплаты кредиты начислятся автоматически.",
         "buy_ok": "✅ Оплата прошла! Начислил кредиты: +{add}. Сейчас у тебя: {credits}.",
         "buy_fail": "❌ Оплата не прошла или отменена.",
+        "generate_song": "🎵 Сгенерировать песню",
+        "generate_song_info": "🎵 *Как сгенерировать песню:*\n\n1. Скопируй текст песни выше\n2. Перейди на сайт [Suno AI](https://suno.ai)\n3. Вставь текст и Style Prompt\n4. Нажми 'Create' для генерации музыки!\n\n_Suno AI создаст готовую песню с музыкой и вокалом._",
     },
     "en": {
         "start": "🎵 *MusicAi PRO*\n\nSend a song topic in one message.\n\n⭐ Billing: each generation costs *1 credit*. Buy credits with *Telegram Stars*.",
@@ -306,6 +308,8 @@ TXT = {
         "buy_text": "Choose a pack. Payment in Telegram Stars (XTR). Credits are added automatically after payment.",
         "buy_ok": "✅ Payment successful! Added credits: +{add}. You now have: {credits}.",
         "buy_fail": "❌ Payment failed or canceled.",
+        "generate_song": "🎵 Generate Song",
+        "generate_song_info": "🎵 *How to generate your song:*\n\n1. Copy the song lyrics above\n2. Go to [Suno AI](https://suno.ai)\n3. Paste the lyrics and Style Prompt\n4. Click 'Create' to generate music!\n\n_Suno AI will create a complete song with music and vocals._",
     }
 }
 
@@ -592,6 +596,13 @@ def kb_buy(u: Dict[str, Any]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def kb_generate_song(u: Dict[str, Any]) -> InlineKeyboardMarkup:
+    """Keyboard with Generate Song button"""
+    button_text = tr(u, "generate_song")
+    buttons = [[InlineKeyboardButton(button_text, callback_data="generate_song")]]
+    return InlineKeyboardMarkup(buttons)
+
+
 # =========================
 # COMMANDS
 # =========================
@@ -748,6 +759,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data or ""
 
     if data == "noop":
+        return
+
+    # Generate Song button
+    if data == "generate_song":
+        await query.answer(tr(u, "generate_song_info"), show_alert=True)
         return
 
     # Buy flow
@@ -914,8 +930,13 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     out = (res.text or "").strip()
     history_add(user_id, text, out)
 
-    for part in split_text(out, MAX_TG_MESSAGE):
-        await update.message.reply_text(part)
+    parts = split_text(out, MAX_TG_MESSAGE)
+    for i, part in enumerate(parts):
+        # Add Generate Song button to the last part only
+        if i == len(parts) - 1:
+            await update.message.reply_text(part, reply_markup=kb_generate_song(u))
+        else:
+            await update.message.reply_text(part)
 
     u = user_get(user_id)
     await update.message.reply_text(
