@@ -74,6 +74,7 @@ TRANSLATIONS = {
         "generating": "🎶 Generating your song...",
         "done": "✅ Done!",
         "error": "❌ Error: {}",
+        "payment_success": "✅ Payment successful!\n\n💎 +{songs} songs added to your balance.\n🎵 Your balance: {balance} songs\n\nYou can now create your personalized songs!",
     },
     "ru": {
         "welcome": "🎵 Добро пожаловать в MusicAI PRO!\nЯ помогу создать персональную песню.",
@@ -85,6 +86,7 @@ TRANSLATIONS = {
         "generating": "🎶 Генерирую вашу песню...",
         "done": "✅ Готово!",
         "error": "❌ Ошибка: {}",
+        "payment_success": "✅ Оплата прошла успешно!\n\n💎 +{songs} песен добавлено на ваш баланс.\n🎵 Ваш баланс: {balance} песен\n\nТеперь вы можете создавать персональные песни!",
     },
 }
 
@@ -468,6 +470,15 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
             songs = int(PACKS[pack_id]["songs"])
             await asyncio.to_thread(add_balance, int(user_id), songs)
             log.info(f"Added {songs} songs to user {user_id}")
+            
+            # Notify user about successful payment
+            if telegram_app and telegram_app.bot:
+                try:
+                    balance = await asyncio.to_thread(get_balance, int(user_id))
+                    msg = tr(int(user_id), "payment_success").format(songs=songs, balance=balance)
+                    await telegram_app.bot.send_message(chat_id=int(user_id), text=msg)
+                except Exception as e:
+                    log.error(f"Failed to notify user {user_id}: {e}")
 
     return {"ok": True}
 
