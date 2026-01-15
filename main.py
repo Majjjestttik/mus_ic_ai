@@ -94,9 +94,9 @@ LANGS = ["en", "ru", "es", "fr", "de", "it", "pt"]
 # Pricing packs
 # -------------------------
 PACKS = {
-    "pack_3": {"songs": 3, "price": 9.99, "label": "3 songs - $9.99"},
-    "pack_10": {"songs": 10, "price": 29.99, "label": "10 songs - $29.99"},
-    "pack_25": {"songs": 25, "price": 59.99, "label": "25 songs - $59.99"},
+    "pack_1": {"songs": 1, "price": 6.00, "label": "1 song - €6.00"},
+    "pack_5": {"songs": 5, "price": 20.00, "label": "5 songs - €20.00"},
+    "pack_30": {"songs": 30, "price": 50.00, "label": "30 songs - €50.00"},
 }
 
 # -------------------------
@@ -312,6 +312,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = tr(user_id, "welcome")
     await update.message.reply_text(text, reply_markup=lang_keyboard())
 
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show language selection menu"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    text = tr(user_id, "choose_language")
+    await update.message.reply_text(text, reply_markup=lang_keyboard())
+
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -478,6 +486,7 @@ async def start_telegram_bot():
     telegram_app = Application.builder().token(BOT_TOKEN).build()
 
     telegram_app.add_handler(CommandHandler("start", cmd_start))
+    telegram_app.add_handler(CommandHandler("menu", cmd_menu))
     telegram_app.add_handler(CallbackQueryHandler(on_callback))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
