@@ -100,9 +100,21 @@ TRANSLATIONS = {
         "error": "❌ Ошибка: {}",
         "payment_success": "✅ Оплата прошла успешно!\n\n💎 +{songs} песен добавлено на ваш баланс.\n🎵 Ваш баланс: {balance} песен\n\nТеперь вы можете создавать персональные песни!",
     },
+    "pl": {
+        "welcome": "🎵 Witamy w MusicAI PRO!\nPomogę Ci stworzyć spersonalizowaną piosenkę.",
+        "choose_language": "Wybierz język:",
+        "language_set": "Język ustawiony: Polski 🇵🇱",
+        "menu": "📋 Menu główne",
+        "buy": "💎 Kup kredyty",
+        "balance": "Saldo: {} piosenek",
+        "generating": "🎶 Generuję twoją piosenkę...",
+        "done": "✅ Gotowe!",
+        "error": "❌ Błąd: {}",
+        "payment_success": "✅ Płatność zakończona sukcesem!\n\n💎 +{songs} piosenek dodano do twojego salda.\n🎵 Twoje saldo: {balance} piosenek\n\nTeraz możesz tworzyć spersonalizowane piosenki!",
+    },
 }
 
-LANGS = ["uk", "en", "ru", "es", "fr", "de", "it", "pt"]
+LANGS = ["uk", "en", "ru", "es", "fr", "de", "pl"]
 
 # -------------------------
 # Pricing packs
