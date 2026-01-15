@@ -45,8 +45,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
-STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "").strip()
-STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "").strip()
+# Get bot username for Telegram redirect URLs
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip()
+# Default redirect URLs point back to Telegram bot
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "").strip()
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "").strip()
 
 # -------------------------
 # Logging
@@ -69,7 +72,7 @@ TRANSLATIONS = {
         "choose_language": "Оберіть мову:",
         "language_set": "Мову встановлено: Українська 🇺🇦",
         "menu": "📋 Головне меню",
-        "buy": "💎 Купити кредити",
+        "buy": "💎 Купити пісні",
         "balance": "Баланс: {} пісень",
         "generating": "🎶 Генерую вашу пісню...",
         "done": "✅ Готово!",
@@ -81,7 +84,7 @@ TRANSLATIONS = {
         "choose_language": "Choose your language:",
         "language_set": "Language set to English 🇬🇧",
         "menu": "📋 Main Menu",
-        "buy": "💎 Buy Song Credits",
+        "buy": "💎 Buy Songs",
         "balance": "Balance: {} songs",
         "generating": "🎶 Generating your song...",
         "done": "✅ Done!",
@@ -93,7 +96,7 @@ TRANSLATIONS = {
         "choose_language": "Выберите язык:",
         "language_set": "Язык установлен: Русский 🇷🇺",
         "menu": "📋 Главное меню",
-        "buy": "💎 Купить кредиты",
+        "buy": "💎 Купить песни",
         "balance": "Баланс: {} песен",
         "generating": "🎶 Генерирую вашу песню...",
         "done": "✅ Готово!",
@@ -105,7 +108,7 @@ TRANSLATIONS = {
         "choose_language": "Wybierz język:",
         "language_set": "Język ustawiony: Polski 🇵🇱",
         "menu": "📋 Menu główne",
-        "buy": "💎 Kup kredyty",
+        "buy": "💎 Kup piosenki",
         "balance": "Saldo: {} piosenek",
         "generating": "🎶 Generuję twoją piosenkę...",
         "done": "✅ Gotowe!",
