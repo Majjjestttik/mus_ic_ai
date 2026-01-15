@@ -1,1308 +1,799 @@
-# -*- coding: utf-8 -*-
-"""
-MusicAi PRO (Telegram bot) + Telegram Stars payments (XTR)
-- python-telegram-bot v21+ (async)
-- OpenRouter Chat Completions (LLM)
-- SQLite user settings + credits
-- Buttons: language, genre, mood, etc.
-- Payments: sendInvoice (XTR), pre_checkout_query, successful_payment
-"""
-
 import os
 import re
 import json
 import time
-import asyncio
 import logging
-import sqlite3
-from dataclasses import dataclass, field
-from typing import Dict, Any, Tuple, List
+from dataclasses import dataclass
+from typing import Optional, Dict, Tuple, Any, List
 
-import aiohttp
-from dotenv import load_dotenv
+import httpx
+import stripe
+import psycopg
+from psycopg.rows import dict_row
 
 from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
     LabeledPrice,
 )
-from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
-    ApplicationBuilder,
     CommandHandler,
-    CallbackQueryHandler,
     MessageHandler,
-    ContextTypes,
+    CallbackQueryHandler,
     PreCheckoutQueryHandler,
+    ContextTypes,
     filters,
 )
 
-# =========================
-# ENV
-# =========================
-# On Render you can skip .env entirely and use Environment Variables,
-# but load_dotenv() won't hurt locally.
-load_dotenv()
+# -----------------------
+# CONFIG
+# -----------------------
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("musicai")
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 
+# OpenRouter (lyrics)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini").strip()
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip()
 
-SUNO_API_KEY = os.getenv("SUNO_API_KEY", "").strip()
-SUNO_API_URL = os.getenv("SUNO_API_URL", "https://api.sunoapi.org").strip()
-SUNO_MODEL = os.getenv("SUNO_MODEL", "chirp-v3-5").strip()
+# PIAPI (Suno Music)
+PIAPI_API_KEY = os.getenv("PIAPI_API_KEY", "").strip()
+PIAPI_BASE_URL = os.getenv("PIAPI_BASE_URL", "").strip()
+PIAPI_SUNO_ENDPOINT = os.getenv("PIAPI_SUNO_ENDPOINT", "/api/v1/suno/music").strip()
+PIAPI_POLL_INTERVAL_SEC = float(os.getenv("PIAPI_POLL_INTERVAL_SEC", "2.0"))
+PIAPI_POLL_TIMEOUT_SEC = float(os.getenv("PIAPI_POLL_TIMEOUT_SEC", "120.0"))
 
-ADMIN_ID = int((os.getenv("ADMIN_ID", "0") or "0").strip())
+# PostgreSQL
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-if not TELEGRAM_TOKEN:
-    raise RuntimeError("❌ TELEGRAM_TOKEN is missing (Render Env Vars or .env)")
+# Stripe Checkout (link payments)
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_PRICE_CURRENCY = "eur"
+SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "https://t.me/").strip()
+CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "https://t.me/").strip()
 
-# =========================
-# LOGGING
-# =========================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-)
-log = logging.getLogger("MusicAiPRO")
+stripe.api_key = STRIPE_SECRET_KEY
 
-# =========================
-# DB
-# =========================
-DB_PATH = "musicai.db"
-
-
-def db_connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def start_of_day_ts(ts: int) -> int:
-    return ts - (ts % 86400)
-
-
-def db_init():
-    conn = db_connect()
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        created_at INTEGER NOT NULL,
-        last_seen INTEGER NOT NULL,
-
-        lang TEXT NOT NULL DEFAULT 'ru',
-        song_language TEXT NOT NULL DEFAULT 'ru',
-        genre TEXT NOT NULL DEFAULT 'pop',
-        mood TEXT NOT NULL DEFAULT 'neutral',
-        vocal TEXT NOT NULL DEFAULT 'male',
-        energy TEXT NOT NULL DEFAULT 'medium',
-        structure TEXT NOT NULL DEFAULT 'classic',
-        rhyme TEXT NOT NULL DEFAULT 'yes',
-
-        credits INTEGER NOT NULL DEFAULT 1,  -- starter credits
-
-        cooldown_until INTEGER NOT NULL DEFAULT 0,
-        daily_count INTEGER NOT NULL DEFAULT 0,
-        daily_reset INTEGER NOT NULL DEFAULT 0
-    );
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        ts INTEGER NOT NULL,
-        prompt TEXT NOT NULL,
-        response TEXT NOT NULL
-    );
-    """)
-
-    conn.commit()
-
-    # If upgrading old DB without credits column, add it
-    try:
-        cur.execute("SELECT credits FROM users LIMIT 1;")
-    except sqlite3.OperationalError:
-        cur.execute("ALTER TABLE users ADD COLUMN credits INTEGER NOT NULL DEFAULT 1;")
-        conn.commit()
-
-    conn.close()
-
-
-def now_ts() -> int:
-    return int(time.time())
-
-
-def user_ensure(user_id: int):
-    now = now_ts()
-    conn = db_connect()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
-    row = cur.fetchone()
-    if not row:
-        cur.execute(
-            "INSERT INTO users (user_id, created_at, last_seen, daily_reset) VALUES (?, ?, ?, ?)",
-            (user_id, now, now, start_of_day_ts(now))
-        )
-    else:
-        cur.execute("UPDATE users SET last_seen=? WHERE user_id=?", (now, user_id))
-    conn.commit()
-    conn.close()
-
-
-def user_get(user_id: int) -> Dict[str, Any]:
-    conn = db_connect()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-    row = cur.fetchone()
-    conn.close()
-    return dict(row) if row else {}
-
-
-def user_set(user_id: int, **fields):
-    if not fields:
-        return
-    conn = db_connect()
-    cur = conn.cursor()
-    keys = list(fields.keys())
-    vals = [fields[k] for k in keys]
-    set_clause = ", ".join([f"{k}=?" for k in keys])
-    cur.execute(f"UPDATE users SET {set_clause} WHERE user_id=?", (*vals, user_id))
-    conn.commit()
-    conn.close()
-
-
-def history_add(user_id: int, prompt: str, response: str):
-    conn = db_connect()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO history (user_id, ts, prompt, response) VALUES (?, ?, ?, ?)",
-        (user_id, now_ts(), prompt[:4000], response[:20000])
-    )
-    conn.commit()
-    conn.close()
-
-
-def history_last(user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
-    conn = db_connect()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT ts, prompt, response FROM history WHERE user_id=? ORDER BY id DESC LIMIT ?",
-        (user_id, limit)
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
-
-# =========================
-# LIMITS
-# =========================
-DAILY_LIMIT = 200
-COOLDOWN_SECONDS = 3
-MAX_USER_TEXT = 800
-MAX_TG_MESSAGE = 3900
-
-
-def normalize_user_text(s: str) -> str:
-    s = (s or "").strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-
-def split_text(text: str, chunk: int = MAX_TG_MESSAGE) -> List[str]:
-    if len(text) <= chunk:
-        return [text]
-    return [text[i:i + chunk] for i in range(0, len(text), chunk)]
-
-
-def ensure_daily_limits(user_id: int) -> Tuple[bool, str]:
-    u = user_get(user_id)
-    now = now_ts()
-
-    reset_ts = int(u.get("daily_reset") or 0)
-    if reset_ts <= 0:
-        user_set(user_id, daily_reset=start_of_day_ts(now), daily_count=0)
-        reset_ts = start_of_day_ts(now)
-
-    if start_of_day_ts(now) != reset_ts:
-        user_set(user_id, daily_reset=start_of_day_ts(now), daily_count=0)
-
-    u = user_get(user_id)
-    if int(u.get("daily_count") or 0) >= DAILY_LIMIT:
-        return False, "daily_limit"
-
-    if now < int(u.get("cooldown_until") or 0):
-        return False, "cooldown"
-
-    return True, ""
-
-
-def bump_usage(user_id: int):
-    u = user_get(user_id)
-    now = now_ts()
-    user_set(
-        user_id,
-        daily_count=int(u.get("daily_count") or 0) + 1,
-        cooldown_until=now + COOLDOWN_SECONDS
-    )
-
-
-# =========================
-# UI TEXT
-# =========================
-TXT = {
-    "ru": {
-        "start": "🎵 *MusicAi PRO*\n\nНапиши тему песни одним сообщением.\n\nТакже можно настроить жанр/язык кнопками.\n\n⭐ Оплата: генерации списывают *1 credit*. Купи кредиты через *Stars*.",
-        "help": "Команды:\n"
-                "/start — меню\n"
-                "/settings — настройки\n"
-                "/history — история\n"
-                "/reset — сброс\n"
-                "/buy — купить кредиты (Stars)\n\n"
-                "Просто напиши тему песни — я верну текст + *Style Prompt* для Suno.",
-        "need_topic": "Напиши тему песни одним сообщением 🙂",
-        "busy": "⏳ Генерирую…",
-        "no_key": "❌ Нет OPENROUTER_API_KEY. Добавь ключ в Render → Environment Variables и перезапусти сервис.",
-        "cooldown": "⏳ Слишком часто. Подожди немного.",
-        "daily_limit": "🚫 Дневной лимит исчерпан. Попробуй завтра.",
-        "settings": "⚙️ *Настройки*\n\nВыбери параметры — они сохраняются.",
-        "saved": "✅ Сохранено.",
-        "reset": "♻️ Сбросил настройки к стандартным.",
-        "history": "🕘 *История (последние)*",
-        "history_empty": "История пустая.",
-        "gen_error": "❌ Ошибка генерации. Попробуй позже.",
-        "no_credits": "🚫 Нет кредитов. Нажми ⭐ *Buy* и оплати Stars, потом попробуй снова.",
-        "done": "✅ Готово.",
-        "credits": "⭐ Credits: *{credits}*",
-        "buy_title": "⭐ Купить кредиты",
-        "buy_text": "Выбери пакет. Оплата в Telegram Stars (XTR). После оплаты кредиты начислятся автоматически.",
-        "buy_ok": "✅ Оплата прошла! Начислил кредиты: +{add}. Сейчас у тебя: {credits}.",
-        "buy_fail": "❌ Оплата не прошла или отменена.",
-        "generate_music": "🎵 Сгенерировать музыку",
-        "generating_music": "🎵 Генерирую музыку через Suno AI... Это займёт ~1 минуту.",
-        "music_ready": "✅ Готово! Вот твои песни:",
-        "no_suno_key": "❌ Suno API не настроен. Обратись к администратору.",
-        "suno_error": "❌ Ошибка генерации музыки. Попробуй позже.",
-        "suno_timeout": "⏳ Генерация музыки заняла слишком много времени. Попробуй позже.",
-        "song_data_expired": "❌ Данные песни устарели. Пожалуйста, сгенерируй текст заново.",
-        "no_lyrics_found": "❌ Текст не найден. Сначала сгенерируй текст песни.",
-        "all_songs_sent": "✅ Все песни отправлены!",
-    },
-    "en": {
-        "start": "🎵 *MusicAi PRO*\n\nSend a song topic in one message.\n\n⭐ Billing: each generation costs *1 credit*. Buy credits with *Telegram Stars*.",
-        "help": "Commands:\n"
-                "/start — menu\n"
-                "/settings — settings\n"
-                "/history — history\n"
-                "/reset — reset\n"
-                "/buy — buy credits (Stars)\n\n"
-                "Send a topic — I will return lyrics + *Suno Style Prompt*.",
-        "need_topic": "Send a song topic in one message 🙂",
-        "busy": "⏳ Generating…",
-        "no_key": "❌ Missing OPENROUTER_API_KEY. Add it in Render → Environment Variables and restart.",
-        "cooldown": "⏳ Too fast. Please wait.",
-        "daily_limit": "🚫 Daily limit reached. Try tomorrow.",
-        "settings": "⚙️ *Settings*\n\nChoose options — they are saved.",
-        "saved": "✅ Saved.",
-        "reset": "♻️ Reset to defaults.",
-        "history": "🕘 *History (last)*",
-        "history_empty": "History is empty.",
-        "gen_error": "❌ Generation error. Try later.",
-        "no_credits": "🚫 No credits. Tap ⭐ *Buy* and pay with Stars, then retry.",
-        "done": "✅ Done!",
-        "credits": "⭐ Credits: *{credits}*",
-        "buy_title": "⭐ Buy credits",
-        "buy_text": "Choose a pack. Payment in Telegram Stars (XTR). Credits are added automatically after payment.",
-        "buy_ok": "✅ Payment successful! Added credits: +{add}. You now have: {credits}.",
-        "buy_fail": "❌ Payment failed or canceled.",
-        "generate_music": "🎵 Generate Music",
-        "generating_music": "🎵 Generating music via Suno AI... This will take ~1 minute.",
-        "music_ready": "✅ Done! Here are your songs:",
-        "no_suno_key": "❌ Suno API not configured. Contact administrator.",
-        "suno_error": "❌ Music generation error. Try later.",
-        "suno_timeout": "⏳ Music generation took too long. Try later.",
-        "song_data_expired": "❌ Song data expired. Please generate lyrics again.",
-        "no_lyrics_found": "❌ No lyrics found. Please generate lyrics first.",
-        "all_songs_sent": "✅ All songs sent!",
-    }
+# Packs
+STARS_PACKS = {
+    "pack_1": {"songs": 1, "amount": 300},
+    "pack_5": {"songs": 5, "amount": 1000},
+    "pack_30": {"songs": 30, "amount": 2500},
+}
+CARD_PACKS_EUR = {
+    "pack_1": {"songs": 1, "amount_cents": 600},
+    "pack_5": {"songs": 5, "amount_cents": 2000},
+    "pack_30": {"songs": 30, "amount_cents": 5000},
 }
 
+# -----------------------
+# UX DATA
+# -----------------------
+LANGS = [
+    ("ru", "🇷🇺 Русский"),
+    ("uk", "🇺🇦 Українська"),
+    ("pl", "🇵🇱 Polski"),
+    ("de", "🇩🇪 Deutsch"),
+    ("en", "🇬🇧 English"),
+    ("es", "🇪🇸 Español"),
+    ("fr", "🇫🇷 Français"),
+]
 
-def tr(u: Dict[str, Any], key: str) -> str:
-    lang = (u.get("lang") or "ru").lower()
-    return TXT.get(lang, TXT["ru"]).get(key, TXT["ru"].get(key, key))
-
-
-def format_settings(u: Dict[str, Any]) -> str:
-    return (
-        f"UI: {u.get('lang')}\n"
-        f"Song language: {u.get('song_language')}\n"
-        f"Genre: {u.get('genre')}\n"
-        f"Mood: {u.get('mood')}\n"
-        f"Vocal: {u.get('vocal')}\n"
-        f"Energy: {u.get('energy')}\n"
-        f"Structure: {u.get('structure')}\n"
-        f"Rhyme: {u.get('rhyme')}\n"
-        f"Credits: {u.get('credits')}\n"
-    )
-
-
-# =========================
-# OPTIONS
-# =========================
-LANG_UI = [("Русский", "ru"), ("English", "en")]
-
-SONG_LANG = [
-    ("Русский", "ru"),
-    ("Polski", "pl"),
-    ("English", "en"),
-    ("Deutsch", "de"),
-    ("Español", "es"),
-    ("Italiano", "it"),
-    ("Français", "fr"),
+SONG_TYPES = [
+    ("birthday", {"ru":"🎂 День рождения","uk":"🎂 День народження","pl":"🎂 Urodziny","de":"🎂 Geburtstag","en":"🎂 Birthday","es":"🎂 Cumpleaños","fr":"🎂 Anniversaire"}),
+    ("love",     {"ru":"❤️ Признание","uk":"❤️ Зізнання","pl":"❤️ Wyznanie","de":"❤️ Liebeserklärung","en":"❤️ Confession","es":"❤️ Declaración","fr":"❤️ Déclaration"}),
+    ("holiday",  {"ru":"🎉 Праздник","uk":"🎉 Свято","pl":"🎉 Święto","de":"🎉 Feier","en":"🎉 Celebration","es":"🎉 Fiesta","fr":"🎉 Fête"}),
+    ("wedding",  {"ru":"💍 Свадьба","uk":"💍 Весілля","pl":"💍 Ślub","de":"💍 Hochzeit","en":"💍 Wedding","es":"💍 Boda","fr":"💍 Mariage"}),
+    ("support",  {"ru":"💪 Поддержка","uk":"💪 Підтримка","pl":"💪 Wsparcie","de":"💪 Unterstützung","en":"💪 Support","es":"💪 Apoyo","fr":"💪 Soutien"}),
+    ("prank",    {"ru":"😈 Розыгрыш","uk":"😈 Розіграш","pl":"😈 Żart","de":"😈 Streich","en":"😈 Prank","es":"😈 Broma","fr":"😈 Farce"}),
+    ("other",    {"ru":"✍️ Другое","uk":"✍️ Інше","pl":"✍️ Inne","de":"✍️ Anderes","en":"✍️ Other","es":"✍️ Otro","fr":"✍️ Autre"}),
 ]
 
 GENRES = [
-    ("Pop", "pop"),
-    ("Disco Polo", "disco_polo"),
-    ("Rap/Hip-Hop", "rap"),
-    ("Rock", "rock"),
-    ("EDM", "edm"),
-    ("Ballad", "ballad"),
-    ("Reggaeton", "reggaeton"),
-    ("Synthwave", "synthwave"),
+    ("pop",      {"ru":"🎵 Поп","uk":"🎵 Поп","pl":"🎵 Pop","de":"🎵 Pop","en":"🎵 Pop","es":"🎵 Pop","fr":"🎵 Pop"}),
+    ("rap",      {"ru":"🎤 Рэп / хип-хоп","uk":"🎤 Реп / хіп-хоп","pl":"🎤 Rap / hip-hop","de":"🎤 Rap / Hip-Hop","en":"🎤 Rap / Hip-Hop","es":"🎤 Rap / hip-hop","fr":"🎤 Rap / hip-hop"}),
+    ("disco",    {"ru":"💃 Диско 90-х","uk":"💃 Диско 90-х","pl":"💃 Disco lat 90.","de":"💃 90er Disco","en":"💃 90s Disco","es":"💃 Disco 90s","fr":"💃 Disco années 90"}),
+    ("rock",     {"ru":"🎸 Рок","uk":"🎸 Рок","pl":"🎸 Rock","de":"🎸 Rock","en":"🎸 Rock","es":"🎸 Rock","fr":"🎸 Rock"}),
+    ("classic",  {"ru":"🎻 Классика","uk":"🎻 Класика","pl":"🎻 Klasyka","de":"🎻 Klassik","en":"🎻 Classical","es":"🎻 Clásica","fr":"🎻 Classique"}),
+    ("electro",  {"ru":"🎛 Электро","uk":"🎛 Електро","pl":"🎛 Electro","de":"🎛 Elektro","en":"🎛 Electro","es":"🎛 Electro","fr":"🎛 Électro"}),
+    ("acoustic", {"ru":"🎻 Акустика","uk":"🎻 Акустика","pl":"🎻 Akustycznie","de":"🎻 Akustik","en":"🎻 Acoustic","es":"🎻 Acústico","fr":"🎻 Acoustique"}),
+    ("custom",   {"ru":"✍️ Свой вариант","uk":"✍️ Свій варіант","pl":"✍️ Własny","de":"✍️ Eigener","en":"✍️ Custom","es":"✍️ Propio","fr":"✍️ Personnalisé"}),
 ]
 
-MOODS = [
-    ("Happy", "happy"),
-    ("Sad", "sad"),
-    ("Romantic", "romantic"),
-    ("Party", "party"),
-    ("Dark", "dark"),
-    ("Neutral", "neutral"),
-]
+HELP_EN = """Help
 
-VOCALS = [
-    ("Male", "male"),
-    ("Female", "female"),
-    ("Duo", "duo"),
-    ("No preference", "any"),
-]
+Sometimes, when using MusicAi, the same questions come up. We’ve collected the most common ones with answers below 👇
 
-ENERGY = [
-    ("Low", "low"),
-    ("Medium", "medium"),
-    ("High", "high"),
-]
+────────────────
 
-STRUCTURES = [
-    ("Classic", "classic"),
-    ("Short (TikTok)", "short"),
-    ("Extended", "extended"),
-]
+Edits and issues
 
-RHYME = [
-    ("Yes", "yes"),
-    ("No (free)", "no"),
-]
+✏️ Can I edit a finished song?
+No. You can only generate a new one (−1 song from your balance).
 
-# =========================
-# STARS PACKS (edit here)
-# amount = Stars (XTR) integer
-# credits_add = how many generations user gets
-# =========================
-STARS_PACKS = {
-    "p1": {"title_ru": "5 генераций", "title_en": "5 generations", "amount_xtr": 25, "credits_add": 5},
-    "p2": {"title_ru": "25 генераций", "title_en": "25 generations", "amount_xtr": 90, "credits_add": 25},
-    "p3": {"title_ru": "100 генераций", "title_en": "100 generations", "amount_xtr": 300, "credits_add": 100},
+🎶 How many versions do I get per generation?
+Each generation gives you two different song versions at once. This is included in the price (−1 song from your balance).
+
+🔉 Why are there pronunciation/stress mistakes?
+This is a limitation of the neural network. To reduce the risk, mark stressed syllables with a capital letter, for example: dIma, svEta, natAsha. But keep in mind the model may not follow it 100%.
+
+🎤 Why did the voice/style change?
+AI may interpret it differently. Avoid using artist names — describe the genre, mood, and tempo instead.
+
+❌ Can I fix only the stress/pronunciation?
+No. Any change requires a new generation.
+
+────────────────
+
+Balance and payments
+
+💸 Why were songs deducted but I didn’t get a result?
+This can happen due to a glitch, a double tap, or auto-generation when message limits are reached. In such cases, your balance is restored.
+
+🏦 Payment went through, but I didn’t receive songs.
+If the payment didn’t reach us, your bank will automatically refund it. You can also send a screenshot to support.
+
+↩️ Can I get a refund?
+Yes, if an error is confirmed.
+
+🎁 Why isn’t the first song free?
+Each generation costs resources. But in the 30-song pack, one song costs only €1.66.
+
+────────────────
+
+Bot operation
+
+🤖 Why was a song generated without my confirmation?
+When message limits are reached, the bot may start generation automatically (it warns you about this).
+
+🔁 Why is the chorus repeated multiple times?
+Because it was written that way in the text. Please check before starting generation.
+
+────────────────
+
+Technical questions
+
+🎶 Can I hear the music without vocals before paying?
+No. The song is generated as a complete track.
+
+────────────────
+
+Copyright
+
+📄 Who owns the rights to the songs?
+You do — as the customer.
+
+🌍 Can I publish the song online (YouTube, Instagram, etc.)?
+Yes, you can publish it under your own name or a pseudonym.
+
+────────────────
+
+💬 For any questions and support, contact us on Telegram:
+@Music_botsong
+"""
+
+TXT = {
+    "choose_lang": {
+        "ru":"Привет! Я MusicAi 🎶\n\nВыбери язык 👇 (можно поменять позже)",
+        "uk":"Привіт! Я MusicAi 🎶\n\nОбери мову 👇 (можна змінити пізніше)",
+        "pl":"Cześć! Jestem MusicAi 🎶\n\nWybierz język 👇 (możesz zmienić później)",
+        "de":"Hallo! Ich bin MusicAi 🎶\n\nWähle eine Sprache 👇 (später änderbar)",
+        "en":"Hi! I’m MusicAi 🎶\n\nChoose your language 👇 (you can change it later)",
+        "es":"¡Hola! Soy MusicAi 🎶\n\nElige tu idioma 👇 (puedes cambiarlo después)",
+        "fr":"Salut ! Je suis MusicAi 🎶\n\nChoisis ta langue 👇 (modifiable plus tard)",
+    },
+    "menu_title": {
+        "ru":"Меню MusicAi ✅",
+        "uk":"Меню MusicAi ✅",
+        "pl":"Menu MusicAi ✅",
+        "de":"MusicAi Menü ✅",
+        "en":"MusicAi Menu ✅",
+        "es":"Menú MusicAi ✅",
+        "fr":"Menu MusicAi ✅",
+    },
+    "balance": {"ru":"Баланс","uk":"Баланс","pl":"Saldo","de":"Guthaben","en":"Balance","es":"Saldo","fr":"Solde"},
+    "songs": {"ru":"песен","uk":"пісень","pl":"piosenek","de":"Songs","en":"songs","es":"canciones","fr":"chansons"},
+    "btn_create": {"ru":"🎵 Создать песню","uk":"🎵 Створити пісню","pl":"🎵 Stwórz piosenkę","de":"🎵 Song erstellen","en":"🎵 Create a song","es":"🎵 Crear canción","fr":"🎵 Créer une chanson"},
+    "btn_buy": {"ru":"🛒 Купить песни","uk":"🛒 Купити пісні","pl":"🛒 Kup piosenki","de":"🛒 Songs kaufen","en":"🛒 Buy songs","es":"🛒 Comprar canciones","fr":"🛒 Acheter des chansons"},
+    "btn_mysongs": {"ru":"📂 Мои песни","uk":"📂 Мої пісні","pl":"📂 Moje piosenki","de":"📂 Meine Songs","en":"📂 My songs","es":"📂 Mis canciones","fr":"📂 Mes chansons"},
+    "btn_lang": {"ru":"🌍 Язык","uk":"🌍 Мова","pl":"🌍 Język","de":"🌍 Sprache","en":"🌍 Language","es":"🌍 Idioma","fr":"🌍 Langue"},
+    "btn_help": {"ru":"🆘 Help","uk":"🆘 Help","pl":"🆘 Help","de":"🆘 Help","en":"🆘 Help","es":"🆘 Help","fr":"🆘 Help"},
+    "choose_type": {"ru":"Выбери тип песни 👇","uk":"Обери тип пісні 👇","pl":"Wybierz typ piosenki 👇","de":"Wähle den Song-Typ 👇","en":"Choose a song type 👇","es":"Elige el tipo de canción 👇","fr":"Choisis le type de chanson 👇"},
+    "choose_genre": {"ru":"Выбери жанр 👇","uk":"Обери жанр 👇","pl":"Wybierz gatunek 👇","de":"Wähle ein Genre 👇","en":"Choose a genre 👇","es":"Elige un género 👇","fr":"Choisis un genre 👇"},
+    "custom_genre": {"ru":"Напиши свой жанр одним сообщением (например: Dubstep / Drum & Bass / Reggaeton).",
+                     "uk":"Напиши свій жанр одним повідомленням (наприклад: Dubstep / Drum & Bass / Reggaeton).",
+                     "pl":"Napisz swój gatunek w jednej wiadomości (np. Dubstep / Drum & Bass / Reggaeton).",
+                     "de":"Schreibe dein Genre in einer Nachricht (z.B. Dubstep / Drum & Bass / Reggaeton).",
+                     "en":"Send your custom genre in one message (e.g., Dubstep / Drum & Bass / Reggaeton).",
+                     "es":"Escribe tu género en un solo mensaje (ej.: Dubstep / Drum & Bass / Reggaeton).",
+                     "fr":"Écris ton genre en un seul message (ex. Dubstep / Drum & Bass / Reggaeton)."},
+    "desc_hint": {"ru":"Напиши всё, что может вдохновить:\n– Как зовут героя?\n– Чем он/она запомнился?\n– Смешные истории, фразы\n– Что передать: любовь, угар, благодарность\n\nЛучше текстом — точнее.",
+                 "uk":"Напиши все деталі:\n– Ім'я героя?\n– Чим запам’ятався?\n– Кумедні історії/фрази\n– Що передати: любов, гумор, вдячність\n\nКраще текстом — точніше.",
+                 "pl":"Napisz szczegóły:\n– Imię bohatera?\n– Co jest wyjątkowe?\n– Śmieszne historie/cytaty\n– Co przekazać: miłość, żart, wdzięczność\n\nLepiej tekstem — dokładniej.",
+                 "de":"Schreibe Details:\n– Name der Person?\n– Wofür bekannt?\n– Lustige Stories/Zitate\n– Was vermitteln: Liebe, Spaß, Dankbarkeit\n\nAm besten als Text — genauer.",
+                 "en":"Write details:\n– Name of the person?\n– What makes them special?\n– Funny stories/quotes\n– What to convey: love, humor, gratitude\n\nText works best — more accurate.",
+                 "es":"Escribe detalles:\n– Nombre de la persona?\n– Qué la hace especial?\n– Historias/frases divertidas\n– Qué transmitir: amor, humor, gratitud\n\nMejor en texto — más preciso.",
+                 "fr":"Écris des détails:\n– Nom de la personne?\n– Ce qui la rend spéciale?\n– Histoires/citations drôles\n– À transmettre: amour, humour, gratitude\n\nLe texte est plus précis."},
+    "pay_method": {"ru":"Выбери способ оплаты 👇","uk":"Обери спосіб оплати 👇","pl":"Wybierz metodę płatności 👇","de":"Zahlungsmethode wählen 👇","en":"Choose a payment method 👇","es":"Elige método de pago 👇","fr":"Choisis un mode de paiement 👇"},
+    "pay_stars": {"ru":"⭐ Telegram Stars","uk":"⭐ Telegram Stars","pl":"⭐ Telegram Stars","de":"⭐ Telegram Stars","en":"⭐ Telegram Stars","es":"⭐ Telegram Stars","fr":"⭐ Telegram Stars"},
+    "pay_card": {"ru":"💳 Оплата картой","uk":"💳 Оплата карткою","pl":"💳 Płatność kartą","de":"💳 Kartenzahlung","en":"💳 Pay by card","es":"💳 Pagar con tarjeta","fr":"💳 Payer par carte"},
+    "generating_lyrics": {"ru":"Генерирую текст… ✍️","uk":"Генерую текст… ✍️","pl":"Tworzę tekst… ✍️","de":"Erzeuge Text… ✍️","en":"Generating lyrics… ✍️","es":"Generando letra… ✍️","fr":"Génération des paroles… ✍️"},
+    "generating_music": {"ru":"Генерирую музыку… 🎶","uk":"Генерую музику… 🎶","pl":"Tworzę muzykę… 🎶","de":"Erzeuge Musik… 🎶","en":"Generating music… 🎶","es":"Generando música… 🎶","fr":"Génération de la musique… 🎶"},
+    "done": {"ru":"🎧 Готово!","uk":"🎧 Готово!","pl":"🎧 Gotowe!","de":"🎧 Fertig!","en":"🎧 Done!","es":"🎧 Listo!","fr":"🎧 Terminé!"},
+    "not_enough": {"ru":"Недостаточно песен на балансе. Нажми 🛒 Купить песни.",
+                   "uk":"Недостатньо пісень на балансі. Натисни 🛒 Купити пісні.",
+                   "pl":"Brak piosenek na saldzie. Kliknij 🛒 Kup piosenki.",
+                   "de":"Nicht genug Guthaben. Klicke 🛒 Songs kaufen.",
+                   "en":"Not enough balance. Tap 🛒 Buy songs.",
+                   "es":"Saldo insuficiente. Pulsa 🛒 Comprar canciones.",
+                   "fr":"Solde insuffisant. Appuie sur 🛒 Acheter des chansons."},
+    "err": {"ru":"❌ Ошибка генерации. Баланс восстановлен (если списался).",
+            "uk":"❌ Помилка генерації. Баланс відновлено (якщо списалось).",
+            "pl":"❌ Błąd generowania. Saldo przywrócone (jeśli pobrano).",
+            "de":"❌ Generierungsfehler. Guthaben wiederhergestellt (falls abgebucht).",
+            "en":"❌ Generation failed. Balance restored (if it was deducted).",
+            "es":"❌ Error de generación. Saldo restaurado (si se descontó).",
+            "fr":"❌ Erreur de génération. Solde restauré (si déduit)."},
 }
 
+def t(lang: str, key: str) -> str:
+    return TXT.get(key, {}).get(lang) or TXT.get(key, {}).get("en") or key
 
-# =========================
-# PROMPT BUILDER
-# =========================
-def build_system_prompt(u: Dict[str, Any]) -> str:
-    structure = u.get("structure", "classic")
-    if structure == "short":
-        structure_text = "[Intro]\n[Verse 1]\n[Chorus]\n[Verse 2]\n[Chorus]\n[Outro]"
-    elif structure == "extended":
-        structure_text = "[Intro]\n[Verse 1]\n[Pre-Chorus]\n[Chorus]\n[Verse 2]\n[Pre-Chorus]\n[Chorus]\n[Bridge]\n[Chorus]\n[Outro]"
-    else:
-        structure_text = "[Intro]\n[Verse 1]\n[Chorus]\n[Verse 2]\n[Bridge]\n[Chorus]\n[Outro]"
+def lang_name(code: str) -> str:
+    return dict(LANGS).get(code, "🇬🇧 English")
 
-    rhyme = u.get("rhyme", "yes")
-    rhyme_text = "с чёткой рифмой" if rhyme == "yes" else "без строгой рифмы (свободный стих), но музыкально"
-
-    song_lang = (u.get("song_language") or "ru").lower()
-    lang_hint = {
-        "ru": "Русский",
-        "pl": "Polish",
-        "en": "English",
-        "de": "Deutsch",
-        "es": "Español",
-        "it": "Italiano",
-        "fr": "Français",
-    }.get(song_lang, "Русский")
-
-    genre = u.get("genre", "pop")
-    mood = u.get("mood", "neutral")
-    vocal = u.get("vocal", "male")
-    energy = u.get("energy", "medium")
-
-    genre_map = {
-        "pop": "Pop",
-        "disco_polo": "Polish Disco Polo",
-        "rap": "Hip-Hop / Rap",
-        "rock": "Rock",
-        "edm": "EDM",
-        "ballad": "Pop Ballad",
-        "reggaeton": "Reggaeton",
-        "synthwave": "Synthwave",
-    }
-    mood_map = {
-        "happy": "Happy",
-        "sad": "Melancholic",
-        "romantic": "Romantic",
-        "party": "Party",
-        "dark": "Dark",
-        "neutral": "Neutral",
-    }
-    vocal_map = {
-        "male": "Male Vocal",
-        "female": "Female Vocal",
-        "duo": "Duet Vocals",
-        "any": "Vocal",
-    }
-    energy_map = {"low": "Low Energy", "medium": "Medium Energy", "high": "High Energy"}
-
-    style_prompt = (
-        f"Style: {genre_map.get(genre, 'Pop')}, "
-        f"{vocal_map.get(vocal, 'Male Vocal')}, "
-        f"{mood_map.get(mood, 'Neutral')}, "
-        f"{energy_map.get(energy, 'Medium Energy')}"
+def menu_kb(lang: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [t(lang,"btn_create"), t(lang,"btn_buy")],
+            [t(lang,"btn_mysongs"), t(lang,"btn_lang")],
+            [t(lang,"btn_help")],
+        ],
+        resize_keyboard=True
     )
 
-    sys = f"""
-Ты — профессиональный автор песен и композитор.
-Твоя задача — написать текст песни на языке: {lang_hint}.
+# -----------------------
+# DB (Postgres)
+# -----------------------
+def db_conn():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set")
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
-Правила:
-1) Всегда используй чёткую структуру (метки строками):
-{structure_text}
+def init_db():
+    with db_conn() as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            lang TEXT NOT NULL DEFAULT 'en',
+            balance INT NOT NULL DEFAULT 0,
+            demo_used INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS songs (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            lang TEXT,
+            song_type TEXT,
+            genre TEXT,
+            description TEXT,
+            lyrics TEXT,
+            audio_url TEXT,
+            is_demo INT NOT NULL DEFAULT 0
+        );
+        """)
+        conn.commit()
 
-2) Текст должен быть ритмичным и подходить для музыкального исполнения, {rhyme_text}.
-3) Не пиши лишних объяснений — только песня.
-4) В конце КАЖДОГО ответа добавляй отдельной строкой:
-Style Prompt: {style_prompt}
+def ensure_user(user_id: int):
+    with db_conn() as conn:
+        conn.execute("INSERT INTO users(user_id) VALUES(%s) ON CONFLICT DO NOTHING", (user_id,))
+        conn.commit()
 
-Важно: Style Prompt всегда на английском.
-"""
-    return normalize_user_text(sys)
+def get_user(user_id: int) -> Dict[str, Any]:
+    ensure_user(user_id)
+    with db_conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE user_id=%s", (user_id,)).fetchone()
+        return row
 
+def set_user_lang(user_id: int, lang: str):
+    with db_conn() as conn:
+        conn.execute("UPDATE users SET lang=%s WHERE user_id=%s", (lang, user_id))
+        conn.commit()
 
-def build_user_prompt(u: Dict[str, Any], user_text: str) -> str:
-    genre = u.get("genre", "pop")
-    mood = u.get("mood", "neutral")
-    user_text = normalize_user_text(user_text)[:MAX_USER_TEXT]
-    return f"Жанр: {genre}. Настроение: {mood}. Тема: {user_text}"
+def add_balance(user_id: int, delta: int):
+    with db_conn() as conn:
+        conn.execute("UPDATE users SET balance = balance + %s WHERE user_id=%s", (delta, user_id))
+        conn.commit()
 
+def consume_song(user_id: int) -> bool:
+    with db_conn() as conn:
+        row = conn.execute("SELECT balance FROM users WHERE user_id=%s", (user_id,)).fetchone()
+        if not row or row["balance"] <= 0:
+            return False
+        conn.execute("UPDATE users SET balance = balance - 1 WHERE user_id=%s", (user_id,))
+        conn.commit()
+        return True
 
-# =========================
-# OPENROUTER CLIENT
-# =========================
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+def mark_demo_used(user_id: int):
+    with db_conn() as conn:
+        conn.execute("UPDATE users SET demo_used=1 WHERE user_id=%s", (user_id,))
+        conn.commit()
 
+def save_song(user_id: int, lang: str, song_type: str, genre: str, desc: str, lyrics: str, audio_url: str, is_demo: int):
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO songs(user_id, lang, song_type, genre, description, lyrics, audio_url, is_demo) "
+            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (user_id, lang, song_type, genre, desc, lyrics, audio_url, is_demo),
+        )
+        conn.commit()
 
+def list_songs(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+    with db_conn() as conn:
+        return conn.execute(
+            "SELECT id, created_at, song_type, genre, is_demo FROM songs WHERE user_id=%s ORDER BY id DESC LIMIT %s",
+            (user_id, limit),
+        ).fetchall()
+
+# -----------------------
+# State (FSM)
+# -----------------------
 @dataclass
-class LLMResult:
-    ok: bool
-    text: str
-    status: int = 0
-    raw: str = ""
+class Draft:
+    song_type: Optional[str] = None
+    genre_key: Optional[str] = None
+    genre_label: Optional[str] = None
+    description: Optional[str] = None
 
+def reset_draft(context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["state"] = None
+    context.user_data["draft"] = Draft()
 
-async def llm_chat(session: aiohttp.ClientSession, system_prompt: str, user_prompt: str) -> LLMResult:
+def draft(context: ContextTypes.DEFAULT_TYPE) -> Draft:
+    d = context.user_data.get("draft")
+    if not isinstance(d, Draft):
+        d = Draft()
+        context.user_data["draft"] = d
+    return d
+
+# -----------------------
+# Keyboards
+# -----------------------
+def kb_lang() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[InlineKeyboardButton(name, callback_data=f"lang:{code}")]
+                                 for code, name in LANGS])
+
+def kb_types(lang: str) -> InlineKeyboardMarkup:
+    rows = []
+    for key, labels in SONG_TYPES:
+        rows.append([InlineKeyboardButton(labels.get(lang, labels["en"]), callback_data=f"type:{key}")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_genres(lang: str) -> InlineKeyboardMarkup:
+    rows = []
+    for key, labels in GENRES:
+        rows.append([InlineKeyboardButton(labels.get(lang, labels["en"]), callback_data=f"genre:{key}")])
+    return InlineKeyboardMarkup(rows)
+
+def kb_buy_methods(lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(lang,"pay_card"), callback_data="buy:card")],
+        [InlineKeyboardButton(t(lang,"pay_stars"), callback_data="buy:stars")],
+    ])
+
+def kb_buy_packs_card() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("€ 6 — 1 song", callback_data="buy:card:pack_1")],
+        [InlineKeyboardButton("€ 20 — 5 songs", callback_data="buy:card:pack_5")],
+        [InlineKeyboardButton("€ 50 — 30 songs", callback_data="buy:card:pack_30")],
+    ])
+
+def kb_buy_packs_stars(lang: str) -> InlineKeyboardMarkup:
+    # labels are ok in any language, stars are universal
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐ 300 — 1 song", callback_data="buy:stars:pack_1")],
+        [InlineKeyboardButton("⭐ 1000 — 5 songs", callback_data="buy:stars:pack_5")],
+        [InlineKeyboardButton("⭐ 2500 — 30 songs", callback_data="buy:stars:pack_30")],
+    ])
+
+# -----------------------
+# OpenRouter lyrics
+# -----------------------
+async def openrouter_lyrics(target_lang: str, song_type: str, genre: str, description: str) -> str:
     if not OPENROUTER_API_KEY:
-        return LLMResult(ok=False, text="NO_KEY", status=401)
+        raise RuntimeError("OPENROUTER_API_KEY not set")
 
+    lang_name_map = {
+        "ru": "русском",
+        "uk": "украинском",
+        "pl": "польском",
+        "de": "немецком",
+        "en": "английском",
+        "es": "испанском",
+        "fr": "французском",
+    }
+    lang_name_ru = lang_name_map.get(target_lang, "английском")
+
+    system = (
+        "Ты профессиональный поэт-песенник. Пишешь строго на указанном языке. "
+        "Структура: [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Chorus]. "
+        "Без пояснений — только текст песни."
+    )
+    user = (
+        f"Язык текста: {lang_name_ru}.\n"
+        f"Тип песни: {song_type}.\n"
+        f"Жанр: {genre}.\n"
+        f"Описание:\n{description}\n\n"
+        "Сгенерируй текст песни."
+    )
+
+    payload = {"model": OPENROUTER_MODEL, "messages": [{"role":"system","content":system},{"role":"user","content":user}], "temperature": 0.9}
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        # Not required, but recommended by OpenRouter:
-        "HTTP-Referer": "https://render.com",
+        "HTTP-Referer": "https://t.me/",
         "X-Title": "MusicAi Telegram Bot",
     }
 
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.9,
-        "max_tokens": 900,
-    }
-
-    try:
-        async with session.post(
-            OPENROUTER_URL,
-            headers=headers,
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=60),
-        ) as resp:
-            status = resp.status
-            raw = await resp.text()
-            if status != 200:
-                return LLMResult(ok=False, text=f"HTTP_{status}", status=status, raw=raw)
-
-            data = json.loads(raw)
-            return LLMResult(
-                ok=True,
-                text=data["choices"][0]["message"]["content"],
-                status=status,
-                raw=raw,
-            )
-
-    except asyncio.TimeoutError:
-        return LLMResult(ok=False, text="TIMEOUT", status=0)
-    except Exception as e:
-        return LLMResult(ok=False, text=f"EXC: {e}", status=0)
-
-
-# =========================
-# SUNO API CLIENT
-# =========================
-@dataclass
-class SunoResult:
-    ok: bool
-    task_id: str = ""
-    audio_urls: List[str] = field(default_factory=list)
-    error: str = ""
-
-
-async def suno_generate_song(
-    session: aiohttp.ClientSession,
-    lyrics: str,
-    style: str,
-    title: str = "AI Generated Song"
-) -> SunoResult:
-    """
-    Submit a song generation request to Suno API.
-    Returns a SunoResult with task_id for polling.
-    """
-    if not SUNO_API_KEY:
-        return SunoResult(ok=False, error="NO_SUNO_KEY")
-    
-    headers = {
-        "Authorization": f"Bearer {SUNO_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    
-    payload = {
-        "custom_mode": True,
-        "instrumental": False,
-        "prompt": lyrics,
-        "style": style,
-        "title": title,
-        "model": SUNO_MODEL,
-    }
-    
-    try:
-        async with session.post(
-            f"{SUNO_API_URL}/api/v1/generate",
-            headers=headers,
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=30),
-        ) as resp:
-            if resp.status != 200:
-                error_text = await resp.text()
-                log.error(f"Suno API error: {resp.status} - {error_text}")
-                return SunoResult(ok=False, error=f"HTTP_{resp.status}")
-            
-            data = await resp.json()
-            task_id = data.get("data", {}).get("taskId") or data.get("taskId", "")
-            
-            if not task_id:
-                return SunoResult(ok=False, error="NO_TASK_ID")
-            
-            return SunoResult(ok=True, task_id=task_id)
-    
-    except asyncio.TimeoutError:
-        return SunoResult(ok=False, error="TIMEOUT")
-    except Exception as e:
-        log.exception("Suno generate error")
-        return SunoResult(ok=False, error=f"EXC: {e}")
-
-
-async def suno_poll_task(
-    session: aiohttp.ClientSession,
-    task_id: str,
-    max_attempts: int = 40,
-    poll_interval: int = 15
-) -> SunoResult:
-    """
-    Poll Suno API for task completion and retrieve audio URLs.
-    Typically takes 30-60 seconds for Suno to generate songs.
-    """
-    if not SUNO_API_KEY:
-        return SunoResult(ok=False, error="NO_SUNO_KEY")
-    
-    headers = {
-        "Authorization": f"Bearer {SUNO_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    
-    for attempt in range(max_attempts):
-        try:
-            async with session.get(
-                f"{SUNO_API_URL}/api/v1/task/{task_id}",
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=20),
-            ) as resp:
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    log.error(f"Suno poll error: {resp.status} - {error_text}")
-                    return SunoResult(ok=False, task_id=task_id, error=f"HTTP_{resp.status}")
-                
-                data = await resp.json()
-                status = data.get("status", "").lower()
-                
-                # Check for completion
-                if status in ("complete", "completed", "success"):
-                    # Extract audio URLs
-                    audio_urls = []
-                    
-                    # Try different response formats
-                    if "output" in data:
-                        for item in data.get("output", []):
-                            if isinstance(item, dict) and "audio_url" in item:
-                                audio_urls.append(item["audio_url"])
-                    elif "audio_url" in data:
-                        audio_urls.append(data["audio_url"])
-                    elif "data" in data:
-                        data_obj = data["data"]
-                        if isinstance(data_obj, dict):
-                            if "audio_url" in data_obj:
-                                audio_urls.append(data_obj["audio_url"])
-                            elif "clips" in data_obj:
-                                for clip in data_obj.get("clips", []):
-                                    if "audio_url" in clip:
-                                        audio_urls.append(clip["audio_url"])
-                    
-                    if audio_urls:
-                        log.info(f"Suno task {task_id} completed with {len(audio_urls)} audio files")
-                        return SunoResult(ok=True, task_id=task_id, audio_urls=audio_urls)
-                    else:
-                        log.warning(f"Suno task {task_id} completed but no audio URLs found")
-                        return SunoResult(ok=False, task_id=task_id, error="NO_AUDIO_URLS")
-                
-                # Check for failure
-                if status in ("failed", "error"):
-                    error_msg = data.get("error", "Unknown error")
-                    log.error(f"Suno task {task_id} failed: {error_msg}")
-                    return SunoResult(ok=False, task_id=task_id, error=f"FAILED: {error_msg}")
-                
-                # Still processing, wait and retry
-                log.info(f"Suno task {task_id} status: {status}, attempt {attempt + 1}/{max_attempts}")
-                await asyncio.sleep(poll_interval)
-        
-        except asyncio.TimeoutError:
-            log.warning(f"Suno poll timeout for task {task_id}, attempt {attempt + 1}")
-            await asyncio.sleep(poll_interval)
-            continue
-        except Exception as e:
-            log.exception(f"Suno poll exception for task {task_id}")
-            await asyncio.sleep(poll_interval)
-            continue
-    
-    # Max attempts reached
-    return SunoResult(ok=False, task_id=task_id, error="TIMEOUT_MAX_ATTEMPTS")
-
-
-# =========================
-# KEYBOARDS
-# =========================
-def kb_main(u: Dict[str, Any]) -> InlineKeyboardMarkup:
-    credits = int(u.get("credits") or 0)
-    credits_line = tr(u, "credits").format(credits=credits)
-
-    buttons = [
-        [InlineKeyboardButton("⭐ Buy", callback_data="menu:buy"),
-         InlineKeyboardButton("⚙️ Settings", callback_data="menu:settings")],
-        [InlineKeyboardButton("🌍 UI Lang", callback_data="menu:ui_lang"),
-         InlineKeyboardButton("📝 Song Lang", callback_data="menu:song_lang")],
-        [InlineKeyboardButton("🎧 Genre", callback_data="menu:genre"),
-         InlineKeyboardButton("😊 Mood", callback_data="menu:mood")],
-        [InlineKeyboardButton("🎤 Vocal", callback_data="menu:vocal"),
-         InlineKeyboardButton("⚡ Energy", callback_data="menu:energy")],
-        [InlineKeyboardButton("🧩 Structure", callback_data="menu:structure"),
-         InlineKeyboardButton("🎵 Rhyme", callback_data="menu:rhyme")],
-        [InlineKeyboardButton("🕘 History", callback_data="menu:history"),
-         InlineKeyboardButton("❓ Help", callback_data="menu:help")],
-        [InlineKeyboardButton(f"{credits_line}", callback_data="noop")],
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-
-def kb_list(items: List[Tuple[str, str]], prefix: str) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(name, callback_data=f"set:{prefix}:{val}")] for name, val in items]
-    rows.append([InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")])
-    return InlineKeyboardMarkup(rows)
-
-
-def kb_buy(u: Dict[str, Any]) -> InlineKeyboardMarkup:
-    rows = []
-    lang = (u.get("lang") or "ru").lower()
-    for pack_id, p in STARS_PACKS.items():
-        title = p["title_ru"] if lang == "ru" else p["title_en"]
-        rows.append([InlineKeyboardButton(f"{title} — {p['amount_xtr']}⭐", callback_data=f"buy:{pack_id}")])
-    rows.append([InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")])
-    return InlineKeyboardMarkup(rows)
-
-
-# =========================
-# COMMANDS
-# =========================
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-    await update.message.reply_text(tr(u, "start"), parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
-
-
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-    await update.message.reply_text(tr(u, "help"), reply_markup=kb_main(u))
-
-
-async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-    text = tr(u, "settings") + "\n\n```" + "\n" + format_settings(u) + "```"
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
-
-
-async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    user_set(
-        user_id,
-        lang="ru",
-        song_language="ru",
-        genre="pop",
-        mood="neutral",
-        vocal="male",
-        energy="medium",
-        structure="classic",
-        rhyme="yes",
-    )
-    u = user_get(user_id)
-    await update.message.reply_text(tr(u, "reset"), reply_markup=kb_main(u))
-
-
-async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-    items = history_last(user_id, 5)
-    if not items:
-        await update.message.reply_text(tr(u, "history_empty"), reply_markup=kb_main(u))
-        return
-    lines = [tr(u, "history")]
-    for it in items:
-        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(it["ts"]))
-        resp = it["response"]
-        if len(resp) > 600:
-            resp = resp[:600] + "…"
-        lines.append(f"\n*{ts}*\n_Topic:_ {it['prompt']}\n{resp}")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
-
-
-async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-    await update.message.reply_text(tr(u, "buy_text"), reply_markup=kb_buy(u))
-
-
-# =========================
-# PAYMENTS (STARS)
-# =========================
-def make_payload(user_id: int, pack_id: str) -> str:
-    # payload must be 1-128 bytes. Keep it short.
-    return f"musicai|{user_id}|{pack_id}|{now_ts()}"
-
-
-async def send_stars_invoice(update: Update, context: ContextTypes.DEFAULT_TYPE, pack_id: str):
-    user_id = update.effective_user.id
-    u = user_get(user_id)
-    p = STARS_PACKS.get(pack_id)
-    if not p:
-        return
-
-    lang = (u.get("lang") or "ru").lower()
-    title = tr(u, "buy_title")
-    desc = (p["title_ru"] if lang == "ru" else p["title_en"]) + f". +{p['credits_add']} credits."
-    payload = make_payload(user_id, pack_id)
-
-    # For Stars: currency="XTR", prices must contain exactly one item.
-    prices = [LabeledPrice(label="Credits", amount=int(p["amount_xtr"]))]
-
-    await context.bot.send_invoice(
-        chat_id=update.effective_chat.id,
-        title=title,
-        description=desc,
-        payload=payload,
-        provider_token="",  # Stars: empty token
-        currency="XTR",
-        prices=prices,
-    )
-
-
-async def on_precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Must answer pre-checkout query
-    query = update.pre_checkout_query
-    try:
-        await query.answer(ok=True)
-    except Exception:
-        pass
-
-
-async def on_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-
-    sp = update.message.successful_payment
-    payload = (sp.invoice_payload or "")
-    # expected: musicai|<user_id>|<pack_id>|<ts>
-    add = 0
-
-    try:
-        parts = payload.split("|")
-        if len(parts) >= 3 and parts[0] == "musicai":
-            pay_user = int(parts[1])
-            pack_id = parts[2]
-            if pay_user == user_id and pack_id in STARS_PACKS:
-                add = int(STARS_PACKS[pack_id]["credits_add"])
-    except Exception:
-        add = 0
-
-    if add > 0:
-        credits = int(u.get("credits") or 0) + add
-        user_set(user_id, credits=credits)
-        u = user_get(user_id)
-        await update.message.reply_text(
-            tr(u, "buy_ok").format(add=add, credits=int(u.get("credits") or 0)),
-            reply_markup=kb_main(u)
-        )
-    else:
-        await update.message.reply_text(tr(u, "buy_fail"), reply_markup=kb_main(u))
-
-
-# =========================
-# CALLBACKS
-# =========================
-async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-    data = query.data or ""
-
-    if data == "noop":
-        return
-
-    # Buy flow
-    if data.startswith("buy:"):
-        pack_id = data.split(":", 1)[1]
-        # send invoice in chat (not editing old msg)
-        await query.message.reply_text(tr(u, "busy"))
-        await send_stars_invoice(update, context, pack_id)
-        return
-    
-    # Suno music generation flow
-    if data.startswith("suno:generate:"):
-        parts = data.split(":")
-        if len(parts) >= 3:
-            requesting_user_id = int(parts[2])
-            
-            # Security: Validate that the requesting user matches the callback user
-            if requesting_user_id != user_id:
-                log.warning(f"User {user_id} attempted to access user {requesting_user_id}'s song data")
-                await query.message.reply_text(
-                    "❌ Unauthorized access",
-                    reply_markup=kb_main(u)
-                )
-                return
-            
-            # Check if Suno API is configured
-            if not SUNO_API_KEY:
-                await query.message.reply_text(tr(u, "no_suno_key"), reply_markup=kb_main(u))
-                return
-            
-            # Get stored song data from context
-            if not hasattr(context, 'user_data') or context.user_data is None:
-                context.user_data = {}
-            
-            song_data = context.user_data.get(requesting_user_id)
-            if not song_data:
-                await query.message.reply_text(
-                    tr(u, "song_data_expired"),
-                    reply_markup=kb_main(u)
-                )
-                return
-            
-            lyrics = song_data.get("lyrics", "")
-            style = song_data.get("style", "Pop, Medium Energy")
-            title = song_data.get("title", "AI Song")
-            
-            if not lyrics:
-                await query.message.reply_text(
-                    tr(u, "no_lyrics_found"),
-                    reply_markup=kb_main(u)
-                )
-                return
-            
-            # Send status message
-            await query.message.reply_text(tr(u, "generating_music"))
-            
-            # Generate music via Suno API
-            async with aiohttp.ClientSession() as session:
-                # Step 1: Submit generation request
-                gen_result = await suno_generate_song(session, lyrics, style, title)
-                
-                if not gen_result.ok:
-                    error_msg = tr(u, "suno_error")
-                    if gen_result.error == "NO_SUNO_KEY":
-                        error_msg = tr(u, "no_suno_key")
-                    log.error(f"Suno generation failed: {gen_result.error}")
-                    await query.message.reply_text(error_msg, reply_markup=kb_main(u))
-                    return
-                
-                log.info(f"Suno task created: {gen_result.task_id}")
-                
-                # Step 2: Poll for completion
-                poll_result = await suno_poll_task(session, gen_result.task_id)
-                
-                if not poll_result.ok:
-                    error_msg = tr(u, "suno_error")
-                    if "TIMEOUT" in poll_result.error:
-                        error_msg = tr(u, "suno_timeout")
-                    log.error(f"Suno polling failed: {poll_result.error}")
-                    await query.message.reply_text(error_msg, reply_markup=kb_main(u))
-                    return
-                
-                # Step 3: Send audio files to user
-                if poll_result.audio_urls:
-                    await query.message.reply_text(tr(u, "music_ready"))
-                    
-                    for idx, audio_url in enumerate(poll_result.audio_urls, 1):
-                        # Basic URL validation for security
-                        if not audio_url or not isinstance(audio_url, str):
-                            log.warning(f"Invalid audio URL format: {audio_url}")
-                            continue
-                        
-                        # Ensure URL uses HTTPS protocol for security
-                        if not audio_url.startswith("https://"):
-                            log.warning(f"Skipping non-HTTPS audio URL: {audio_url}")
-                            continue
-                        
-                        try:
-                            # Send audio as URL (Telegram will render as audio player)
-                            await query.message.reply_audio(
-                                audio=audio_url,
-                                caption=f"🎵 Song {idx}/{len(poll_result.audio_urls)}"
-                            )
-                        except Exception as e:
-                            log.error(f"Failed to send audio {idx}: {e}")
-                            # Fallback: send as text link
-                            await query.message.reply_text(
-                                f"🎵 Song {idx}: {audio_url}"
-                            )
-                    
-                    await query.message.reply_text(
-                        tr(u, "all_songs_sent"),
-                        reply_markup=kb_main(u)
-                    )
-                else:
-                    await query.message.reply_text(
-                        tr(u, "suno_error"),
-                        reply_markup=kb_main(u)
-                    )
-        return
-
-    if data.startswith("menu:"):
-        section = data.split(":", 1)[1]
-
-        if section == "settings":
-            txt = tr(u, "settings") + "\n\n```" + "\n" + format_settings(u) + "```"
-            await query.edit_message_text(txt, parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
-            return
-
-        if section == "buy":
-            await query.edit_message_text(tr(u, "buy_text"), reply_markup=kb_buy(u))
-            return
-
-        if section == "ui_lang":
-            await query.edit_message_text("🌍 UI language:", reply_markup=kb_list(LANG_UI, "ui_lang"))
-            return
-
-        if section == "song_lang":
-            await query.edit_message_text("📝 Song language:", reply_markup=kb_list(SONG_LANG, "song_language"))
-            return
-
-        if section == "genre":
-            await query.edit_message_text("🎧 Genre:", reply_markup=kb_list(GENRES, "genre"))
-            return
-
-        if section == "mood":
-            await query.edit_message_text("😊 Mood:", reply_markup=kb_list(MOODS, "mood"))
-            return
-
-        if section == "vocal":
-            await query.edit_message_text("🎤 Vocal:", reply_markup=kb_list(VOCALS, "vocal"))
-            return
-
-        if section == "energy":
-            await query.edit_message_text("⚡ Energy:", reply_markup=kb_list(ENERGY, "energy"))
-            return
-
-        if section == "structure":
-            await query.edit_message_text("🧩 Structure:", reply_markup=kb_list(STRUCTURES, "structure"))
-            return
-
-        if section == "rhyme":
-            await query.edit_message_text("🎵 Rhyme:", reply_markup=kb_list(RHYME, "rhyme"))
-            return
-
-        if section == "history":
-            await query.message.reply_text(tr(u, "busy"))
-            items = history_last(user_id, 5)
-            if not items:
-                await query.message.reply_text(tr(u, "history_empty"), reply_markup=kb_main(u))
-                return
-            lines = [tr(u, "history")]
-            for it in items:
-                ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(it["ts"]))
-                resp = it["response"]
-                if len(resp) > 600:
-                    resp = resp[:600] + "…"
-                lines.append(f"\n*{ts}*\n_Topic:_ {it['prompt']}\n{resp}")
-            await query.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main(u))
-            return
-
-        if section == "help":
-            await query.message.reply_text(tr(u, "help"), reply_markup=kb_main(u))
-            return
-
-    if data.startswith("set:"):
-        _, field, value = data.split(":", 2)
-        if field == "ui_lang":
-            user_set(user_id, lang=value)
-        elif field in ("song_language", "genre", "mood", "vocal", "energy", "structure", "rhyme"):
-            user_set(user_id, **{field: value})
-
-        u = user_get(user_id)
-        await query.message.reply_text(
-            tr(u, "saved") + "\n\n```" + "\n" + format_settings(u) + "```",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=kb_main(u)
-        )
-        try:
-            await query.edit_message_reply_markup(reply_markup=kb_main(u))
-        except Exception:
-            pass
-        return
-
-
-# =========================
-# GENERATION HANDLER
-# =========================
-async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_ensure(user_id)
-    u = user_get(user_id)
-
-    text = normalize_user_text(update.message.text or "")
-    if not text:
-        await update.message.reply_text(tr(u, "need_topic"), reply_markup=kb_main(u))
-        return
-
-    if text.startswith("/"):
-        return
-
-    ok, reason = ensure_daily_limits(user_id)
-    if not ok:
-        await update.message.reply_text(tr(u, reason), reply_markup=kb_main(u))
-        return
-
-    if not OPENROUTER_API_KEY:
-        await update.message.reply_text(tr(u, "no_key"), reply_markup=kb_main(u))
-        return
-
-    # credits check (admin bypass)
-    if ADMIN_ID > 0 and user_id == ADMIN_ID:
-        pass
-    else:
-        credits = int(u.get("credits") or 0)
-        if credits <= 0:
-            await update.message.reply_text(
-                tr(u, "no_credits"),
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=kb_buy(u)
-            )
-            return
-        # reserve 1 credit immediately (prevents spam double-spend)
-        user_set(user_id, credits=credits - 1)
-        u = user_get(user_id)
-
-    bump_usage(user_id)
-    await update.message.reply_text(tr(u, "busy"))
-
-    system_prompt = build_system_prompt(u)
-    user_prompt = build_user_prompt(u, text)
-
-    async with aiohttp.ClientSession() as session:
-        res = await llm_chat(session, system_prompt, user_prompt)
-
-    if not res.ok:
-        # refund credit on failure (non-admin)
-        if not (ADMIN_ID > 0 and user_id == ADMIN_ID):
-            u2 = user_get(user_id)
-            user_set(user_id, credits=int(u2.get("credits") or 0) + 1)
-
-        if res.status == 401:
-            await update.message.reply_text(
-                "❌ 401: ключ OpenRouter не принят. Проверь OPENROUTER_API_KEY.",
-                reply_markup=kb_main(user_get(user_id))
-            )
-            return
-
-        await update.message.reply_text(
-            tr(u, "gen_error") + f"\n\nDebug: {res.text}\n{res.raw[:600]}",
-            reply_markup=kb_main(user_get(user_id))
-        )
-        return
-
-    out = (res.text or "").strip()
-    history_add(user_id, text, out)
-
-    # Store generated song in context for the "Generate Music" button
-    # Extract style prompt from the output
-    style_prompt = ""
-    lyrics = out
-    if "Style Prompt:" in out:
-        parts = out.rsplit("Style Prompt:", 1)
-        if len(parts) == 2:
-            lyrics = parts[0].strip()
-            style_prompt = parts[1].strip()
-    
-    # Store in user context for callback handler
-    if not hasattr(context, 'user_data') or context.user_data is None:
-        context.user_data = {}
-    context.user_data[user_id] = {
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.post(f"{OPENROUTER_BASE_URL}/chat/completions", headers=headers, json=payload)
+        r.raise_for_status()
+        data = r.json()
+        return data["choices"][0]["message"]["content"].strip()
+
+def detect_lang_override(text: str) -> Optional[str]:
+    t_ = text.lower()
+    if re.search(r"\b(рус|russian|по[-\s]?рус)\b", t_): return "ru"
+    if re.search(r"\b(укр|україн|ukrainian)\b", t_): return "uk"
+    if re.search(r"\b(поль|polski|polish)\b", t_): return "pl"
+    if re.search(r"\b(нем|deutsch|german)\b", t_): return "de"
+    if re.search(r"\b(англ|english)\b", t_): return "en"
+    if re.search(r"\b(испан|español|spanish)\b", t_): return "es"
+    if re.search(r"\b(франц|français|french)\b", t_): return "fr"
+    return None
+
+# -----------------------
+# PIAPI music (adapter)
+# -----------------------
+async def piapi_music(lyrics: str, style: str, is_demo: bool) -> str:
+    if not PIAPI_API_KEY or not PIAPI_BASE_URL:
+        raise RuntimeError("PIAPI_API_KEY/PIAPI_BASE_URL not set")
+
+    duration = 60 if is_demo else 120
+    create_payload = {
         "lyrics": lyrics,
-        "style": style_prompt,
-        "title": text[:50],  # Use first 50 chars of prompt as title
+        "style": style,
+        "duration": duration,
+        "instrumental": False,
+        "num_variations": 2,
     }
+    headers = {"X-API-Key": PIAPI_API_KEY, "Content-Type": "application/json"}
+    create_url = f"{PIAPI_BASE_URL}{PIAPI_SUNO_ENDPOINT}"
 
-    for part in split_text(out, MAX_TG_MESSAGE):
-        await update.message.reply_text(part)
+    async with httpx.AsyncClient(timeout=60) as client:
+        cr = await client.post(create_url, headers=headers, json=create_payload)
+        cr.raise_for_status()
+        created = cr.json()
 
-    # Create keyboard with "Generate Music" button if Suno API is configured
-    u = user_get(user_id)
-    if SUNO_API_KEY:
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(tr(u, "generate_music"), callback_data=f"suno:generate:{user_id}")],
-            [InlineKeyboardButton("⬅️ Back", callback_data="menu:settings")],
-        ])
-        await update.message.reply_text(
-            tr(u, "done") + "\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=kb
-        )
-    else:
-        await update.message.reply_text(
-            tr(u, "done") + "\n" + tr(u, "credits").format(credits=int(u.get("credits") or 0)),
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=kb_main(u)
-        )
+        task_id = created.get("task_id") or created.get("id") or (created.get("data") or {}).get("task_id")
+        if not task_id:
+            audio_url = created.get("audio_url") or (created.get("data") or {}).get("audio_url")
+            if audio_url:
+                return audio_url
+            raise RuntimeError(f"PIAPI: no task_id. Response: {created}")
 
+        poll_url = f"{PIAPI_BASE_URL}/api/v1/tasks/{task_id}"
+        start = time.time()
+        last = None
+        while time.time() - start < PIAPI_POLL_TIMEOUT_SEC:
+            await _sleep(PIAPI_POLL_INTERVAL_SEC)
+            pr = await client.get(poll_url, headers=headers)
+            pr.raise_for_status()
+            last = pr.json()
+            status = (last.get("status") or last.get("state") or "").lower()
 
-# =========================
-# ADMIN
-# =========================
-async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if ADMIN_ID <= 0 or user_id != ADMIN_ID:
-        return
-    conn = db_connect()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) as c FROM users")
-    users_count = cur.fetchone()["c"]
-    cur.execute("SELECT COUNT(*) as c FROM history")
-    hist_count = cur.fetchone()["c"]
-    conn.close()
+            if status in ("succeeded","success","completed","done","finished"):
+                audio_url = last.get("audio_url") or (last.get("result") or {}).get("audio_url") or (last.get("data") or {}).get("audio_url")
+                if not audio_url:
+                    variants = (last.get("result") or {}).get("audios") or (last.get("data") or {}).get("audios")
+                    if isinstance(variants, list) and variants:
+                        audio_url = variants[0].get("url") or variants[0].get("audio_url")
+                if not audio_url:
+                    raise RuntimeError(f"PIAPI: completed but no audio_url: {last}")
+                return audio_url
+
+            if status in ("failed","error","canceled","cancelled"):
+                raise RuntimeError(f"PIAPI: failed: {last}")
+
+        raise RuntimeError(f"PIAPI timeout. Last: {last}")
+
+async def _sleep(sec: float):
+    import asyncio
+    await asyncio.sleep(sec)
+
+# -----------------------
+# Stripe Checkout Session
+# -----------------------
+def stripe_checkout_url(user_id: int, pack: str) -> str:
+    if not STRIPE_SECRET_KEY:
+        raise RuntimeError("STRIPE_SECRET_KEY not set")
+
+    info = CARD_PACKS_EUR[pack]
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        success_url=SUCCESS_URL,
+        cancel_url=CANCEL_URL,
+        line_items=[{
+            "price_data": {
+                "currency": STRIPE_PRICE_CURRENCY,
+                "product_data": {"name": f"MusicAi — {info['songs']} songs"},
+                "unit_amount": info["amount_cents"],
+            },
+            "quantity": 1,
+        }],
+        metadata={"user_id": str(user_id), "pack": pack},
+    )
+    return session.url
+
+# -----------------------
+# Handlers
+# -----------------------
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ensure_user(update.effective_user.id)
+    reset_draft(context)
+    # Default language could be EN until user chooses
+    await update.message.reply_text(TXT["choose_lang"]["en"], reply_markup=kb_lang())
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    ensure_user(uid)
+    reset_draft(context)
+    u = get_user(uid)
+    lang = u["lang"]
     await update.message.reply_text(
-        f"Admin:\nUsers: {users_count}\nHistory: {hist_count}\nModel: {OPENROUTER_MODEL}"
+        f"{t(lang,'menu_title')}\n\n{t(lang,'balance')}: {u['balance']} {t(lang,'songs')}\n{lang_name(lang)}",
+        reply_markup=menu_kb(lang)
     )
 
+async def cb_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    ensure_user(uid)
+    u = get_user(uid)
+    lang = u["lang"]
 
-# =========================
-# ERROR HANDLER
-# =========================
-async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
-    log.exception("Unhandled error: %s", context.error)
+    data = q.data or ""
 
+    if data.startswith("lang:"):
+        code = data.split(":", 1)[1]
+        set_user_lang(uid, code)
+        u2 = get_user(uid)
+        lang2 = u2["lang"]
+        reset_draft(context)
+        await q.message.reply_text(
+            f"✅ {lang_name(lang2)}",
+            reply_markup=menu_kb(lang2)
+        )
+        return
 
-# =========================
-# MAIN
-# =========================
-def build_app() -> Application:
-    db_init()
+    if data.startswith("type:"):
+        d = draft(context)
+        d.song_type = data.split(":", 1)[1]
+        context.user_data["state"] = "choose_genre"
+        await q.message.reply_text(t(lang,"choose_genre"), reply_markup=kb_genres(lang))
+        return
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    if data.startswith("genre:"):
+        gkey = data.split(":", 1)[1]
+        d = draft(context)
+        d.genre_key = gkey
+        if gkey == "custom":
+            context.user_data["state"] = "await_custom_genre"
+            await q.message.reply_text(t(lang,"custom_genre"))
+        else:
+            # resolve label
+            label = next((labels.get(lang, labels["en"]) for key, labels in GENRES if key == gkey), gkey)
+            d.genre_label = label
+            context.user_data["state"] = "await_description"
+            await q.message.reply_text(t(lang,"desc_hint"))
+        return
 
-    # commands
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("settings", cmd_settings))
-    app.add_handler(CommandHandler("history", cmd_history))
-    app.add_handler(CommandHandler("reset", cmd_reset))
-    app.add_handler(CommandHandler("buy", cmd_buy))
-    app.add_handler(CommandHandler("admin", cmd_admin))
+    if data == "buy:card":
+        await q.message.reply_text(t(lang,"pay_method"), reply_markup=kb_buy_packs_card())
+        return
 
-    # callbacks
-    app.add_handler(CallbackQueryHandler(on_callback))
+    if data == "buy:stars":
+        await q.message.reply_text(t(lang,"pay_method"), reply_markup=kb_buy_packs_stars(lang))
+        return
 
-    # payments
-    app.add_handler(PreCheckoutQueryHandler(on_precheckout))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, on_successful_payment))
+    m = re.match(r"buy:card:(pack_\d+)", data)
+    if m:
+        pack = m.group(1)
+        try:
+            url = stripe_checkout_url(uid, pack)
+            await q.message.reply_text(f"💳 Pay by card:\n{url}")
+        except Exception as e:
+            log.exception("Stripe session failed")
+            await q.message.reply_text("❌ Stripe error. Try later.")
+        return
 
-    # text
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    m = re.match(r"buy:stars:(pack_\d+)", data)
+    if m:
+        pack = m.group(1)
+        info = STARS_PACKS[pack]
+        prices = [LabeledPrice(label=f"{info['songs']} songs", amount=info["amount"])]
+        payload = json.dumps({"method":"stars","pack":pack})
+        await context.bot.send_invoice(
+            chat_id=uid,
+            title="MusicAi — Songs (Stars)",
+            description=f"{info['songs']} songs",
+            payload=payload,
+            provider_token="",
+            currency="XTR",
+            prices=prices,
+        )
+        return
 
-    app.add_error_handler(on_error)
-    return app
+async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.pre_checkout_query.answer(ok=True)
 
+async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    ensure_user(uid)
+    sp = update.message.successful_payment
+    try:
+        p = json.loads(sp.invoice_payload)
+        pack = p.get("pack")
+    except Exception:
+        pack = None
+    if pack in STARS_PACKS:
+        add_balance(uid, STARS_PACKS[pack]["songs"])
+        u = get_user(uid)
+        lang = u["lang"]
+        await update.message.reply_text(
+            f"✅ +{STARS_PACKS[pack]['songs']} {t(lang,'songs')}\n{t(lang,'balance')}: {u['balance']} {t(lang,'songs')}",
+            reply_markup=menu_kb(lang)
+        )
+
+async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    ensure_user(uid)
+    u = get_user(uid)
+    lang = u["lang"]
+    text = (update.message.text or "").strip()
+
+    # Menu buttons (translated)
+    if text == t(lang,"btn_create"):
+        reset_draft(context)
+        context.user_data["state"] = "choose_type"
+        await update.message.reply_text(t(lang,"choose_type"), reply_markup=kb_types(lang))
+        return
+
+    if text == t(lang,"btn_buy"):
+        reset_draft(context)
+        await update.message.reply_text(t(lang,"pay_method"), reply_markup=kb_buy_methods(lang))
+        return
+
+    if text == t(lang,"btn_mysongs"):
+        reset_draft(context)
+        rows = list_songs(uid, 10)
+        if not rows:
+            await update.message.reply_text("No songs yet.", reply_markup=menu_kb(lang))
+            return
+        lines = ["Last songs:"]
+        for r in rows:
+            lines.append(f"• {r['created_at']} — {r['song_type']} / {r['genre']}" + (" (DEMO)" if r["is_demo"] else ""))
+        await update.message.reply_text("\n".join(lines), reply_markup=menu_kb(lang))
+        return
+
+    if text == t(lang,"btn_lang"):
+        reset_draft(context)
+        await update.message.reply_text(t(lang,"choose_lang"), reply_markup=kb_lang())
+        return
+
+    if text == t(lang,"btn_help"):
+        reset_draft(context)
+        await update.message.reply_text(HELP_EN, reply_markup=menu_kb(lang))
+        return
+
+    # Flow states
+    st = context.user_data.get("state")
+    d = draft(context)
+
+    if st == "await_custom_genre":
+        d.genre_label = text[:60]
+        context.user_data["state"] = "await_description"
+        await update.message.reply_text(t(lang,"desc_hint"))
+        return
+
+    if st == "await_description":
+        d.description = text
+        context.user_data["state"] = "generating"
+
+        # resolve labels
+        type_label = next((labels.get(lang, labels["en"]) for key, labels in SONG_TYPES if key == d.song_type), d.song_type or "Other")
+        genre_label = d.genre_label or "Pop"
+
+        # demo?
+        is_demo = 1 if int(u["demo_used"]) == 0 else 0
+
+        # consume if not demo
+        if not is_demo:
+            if not consume_song(uid):
+                reset_draft(context)
+                await update.message.reply_text(t(lang,"not_enough"), reply_markup=menu_kb(lang))
+                return
+
+        await update.message.reply_text(t(lang,"generating_lyrics"))
+        try:
+            lang_final = detect_lang_override(d.description) or lang
+            lyrics = await openrouter_lyrics(lang_final, type_label, genre_label, d.description)
+
+            await update.message.reply_text(t(lang,"generating_music"))
+            audio_url = await piapi_music(lyrics, genre_label, bool(is_demo))
+
+            if is_demo:
+                mark_demo_used(uid)
+
+            await update.message.reply_text(f"{t(lang,'done')}\n{audio_url}")
+            await update.message.reply_text(lyrics[:3900] + ("\n\n…(cut)" if len(lyrics) > 3900 else ""))
+
+            save_song(uid, lang_final, type_label, genre_label, d.description, lyrics, audio_url, is_demo)
+
+            u2 = get_user(uid)
+            await update.message.reply_text(
+                f"{t(lang,'balance')}: {u2['balance']} {t(lang,'songs')}",
+                reply_markup=menu_kb(lang)
+            )
+
+        except Exception:
+            log.exception("Generation error")
+            if not is_demo:
+                add_balance(uid, 1)
+            await update.message.reply_text(t(lang,"err"), reply_markup=menu_kb(lang))
+        finally:
+            reset_draft(context)
+        return
+
+    # fallback
+    await cmd_menu(update, context)
+
+async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    ensure_user(uid)
+    u = get_user(uid)
+    lang = u["lang"]
+    await update.message.reply_text(
+        "🎤 Voice received. Please send key details as text (more accurate).",
+        reply_markup=menu_kb(lang)
+    )
 
 def main():
-    app = build_app()
-    log.info("✅ MusicAi PRO started (polling)")
-    app.run_polling(close_loop=False)
+    init_db()
+    app = Application.builder().token(BOT_TOKEN).build()
 
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("menu", cmd_menu))
+
+    app.add_handler(CallbackQueryHandler(cb_router))
+
+    app.add_handler(PreCheckoutQueryHandler(precheckout))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+
+    app.add_handler(MessageHandler(filters.VOICE, on_voice))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
+    log.info("MusicAi bot started")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
