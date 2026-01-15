@@ -64,6 +64,18 @@ if STRIPE_SECRET_KEY:
 # Translations
 # -------------------------
 TRANSLATIONS = {
+    "uk": {
+        "welcome": "🎵 Ласкаво просимо до MusicAI PRO!\nЯ допоможу створити персональну пісню.",
+        "choose_language": "Оберіть мову:",
+        "language_set": "Мову встановлено: Українська 🇺🇦",
+        "menu": "📋 Головне меню",
+        "buy": "💎 Купити кредити",
+        "balance": "Баланс: {} пісень",
+        "generating": "🎶 Генерую вашу пісню...",
+        "done": "✅ Готово!",
+        "error": "❌ Помилка: {}",
+        "payment_success": "✅ Оплата пройшла успішно!\n\n💎 +{songs} пісень додано на ваш баланс.\n🎵 Ваш баланс: {balance} пісень\n\nТепер ви можете створювати персональні пісні!",
+    },
     "en": {
         "welcome": "🎵 Welcome to MusicAI PRO!\nI'll help you create personalized songs.",
         "choose_language": "Choose your language:",
@@ -90,7 +102,7 @@ TRANSLATIONS = {
     },
 }
 
-LANGS = ["en", "ru", "es", "fr", "de", "it", "pt"]
+LANGS = ["uk", "en", "ru", "es", "fr", "de", "it", "pt"]
 
 # -------------------------
 # Pricing packs
@@ -114,7 +126,7 @@ def init_db():
         conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
-            lang TEXT NOT NULL DEFAULT 'en',
+            lang TEXT NOT NULL DEFAULT 'uk',
             balance INT NOT NULL DEFAULT 0,
             demo_used INT NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -161,8 +173,8 @@ def consume_song(user_id: int) -> bool:
 def tr(user_id: int, key: str) -> str:
     """Translate text for user"""
     user = get_user(user_id)
-    lang = user.get("lang", "en")
-    return TRANSLATIONS.get(lang, TRANSLATIONS["en"]).get(key, key)
+    lang = user.get("lang", "uk")
+    return TRANSLATIONS.get(lang, TRANSLATIONS["uk"]).get(key, key)
 
 # -------------------------
 # OpenRouter lyrics generation
@@ -251,12 +263,12 @@ def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
 def lang_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for lang in LANGS:
-        flag = {"en": "🇬🇧", "ru": "🇷🇺", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪", "it": "🇮🇹", "pt": "��🇹"}.get(lang, "🌍")
+        flag = {"uk": "🇺🇦", "en": "🇬🇧", "ru": "🇷🇺", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪", "it": "��🇹", "pt": "🇵🇹"}.get(lang, "🌍")
         buttons.append([InlineKeyboardButton(f"{flag} {lang.upper()}", callback_data=f"lang:{lang}")])
     return InlineKeyboardMarkup(buttons)
 
 def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
-    user_trans = TRANSLATIONS.get(lang, TRANSLATIONS["en"])
+    user_trans = TRANSLATIONS.get(lang, TRANSLATIONS["uk"])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(user_trans["buy"], callback_data="buy")],
     ])
