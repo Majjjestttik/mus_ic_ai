@@ -285,7 +285,9 @@ def lang_keyboard() -> InlineKeyboardMarkup:
 def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
     user_trans = TRANSLATIONS.get(lang, TRANSLATIONS["uk"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(user_trans["buy"], callback_data="buy")],
+        [InlineKeyboardButton("💰 " + user_trans["buy"], callback_data="buy")],
+        [InlineKeyboardButton("💎 Баланс" if lang in ["uk", "ru"] else ("Saldo" if lang == "pl" else "Balance"), callback_data="balance")],
+        [InlineKeyboardButton("❓ Допомога" if lang == "uk" else ("Помощь" if lang == "ru" else ("Pomoc" if lang == "pl" else "Help")), callback_data="help")],
     ])
 
 def genres_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -389,6 +391,55 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 log.error(f"Checkout session error: {e}")
                 await query.edit_message_text(tr(user_id, "error").format(str(e)))
+        
+        elif data == "balance":
+            user = await asyncio.to_thread(get_user, user_id)
+            balance = user.get("balance", 0)
+            lang = user.get("lang", "uk")
+            text = tr(user_id, "balance").format(balance)
+            await query.edit_message_text(text, reply_markup=menu_keyboard(lang))
+        
+        elif data == "help":
+            user = await asyncio.to_thread(get_user, user_id)
+            lang = user.get("lang", "uk")
+            help_text = """🎵 MusicAI PRO - Створюй унікальні пісні!
+
+Як використовувати:
+1️⃣ Оберіть мову інтерфейсу
+2️⃣ Оберіть жанр музики
+3️⃣ Оберіть настрій пісні
+4️⃣ Опишіть про що ваша пісня
+5️⃣ Я створю текст і музику!
+
+💎 Вартість: 1 пісня = 1 кредит
+💰 Купити пісні: /menu → Купити пісні
+
+Питання? Напишіть @support""" if lang == "uk" else """🎵 MusicAI PRO - Create unique songs!
+
+How to use:
+1️⃣ Choose interface language
+2️⃣ Select music genre
+3️⃣ Select song mood
+4️⃣ Describe what your song is about
+5️⃣ I'll create lyrics and music!
+
+💎 Cost: 1 song = 1 credit
+💰 Buy songs: /menu → Buy Songs
+
+Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Создавай уникальные песни!
+
+Как использовать:
+1️⃣ Выберите язык интерфейса
+2️⃣ Выберите жанр музыки
+3️⃣ Выберите настроение песни
+4️⃣ Опишите о чём ваша песня
+5️⃣ Я создам текст и музыку!
+
+💎 Стоимость: 1 песня = 1 кредит
+💰 Купить песни: /menu → Купить песни
+
+Вопросы? Напишите @support"""
+            await query.edit_message_text(help_text, reply_markup=menu_keyboard(lang))
         
         elif data.startswith("genre:"):
             genre = data.split(":")[1]
