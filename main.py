@@ -355,6 +355,10 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
     if "your-piapi-server.com" in PIAPI_BASE_URL or "example.com" in PIAPI_BASE_URL:
         raise RuntimeError(f"PIAPI_BASE_URL is set to a placeholder value '{PIAPI_BASE_URL}'. Please set it to your actual PIAPI server URL.")
     
+    # Check if user incorrectly included the path in PIAPI_BASE_URL
+    if "/api/v1/task" in PIAPI_BASE_URL:
+        raise RuntimeError(f"PIAPI_BASE_URL should not include the path. Set PIAPI_BASE_URL='https://api.piapi.ai' (without /api/v1/task). Current value: {PIAPI_BASE_URL}")
+    
     url = f"{PIAPI_BASE_URL}{PIAPI_GENERATE_PATH}"
     log.info(f"Calling PIAPI at: {url}")
     
@@ -384,7 +388,7 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
                     error_msg = f"PIAPI error {resp.status}: {text if text else '(empty response)'}"
                     log.error(f"{error_msg}. URL: {url}")
                     if resp.status == 404:
-                        raise RuntimeError(f"PIAPI endpoint not found (404). Please check PIAPI_BASE_URL={PIAPI_BASE_URL} and PIAPI_GENERATE_PATH={PIAPI_GENERATE_PATH}")
+                        raise RuntimeError(f"PIAPI endpoint not found (404). The URL '{url}' does not exist. Make sure PIAPI_BASE_URL='https://api.piapi.ai' (without /api/v1/task path) and PIAPI_GENERATE_PATH='/api/v1/task'")
                     raise RuntimeError(error_msg)
                 return await resp.json()
     except aiohttp.ClientError as e:
@@ -781,6 +785,8 @@ async def startup_event():
         log.warning("⚠️ PIAPI_BASE_URL not set - music generation will not work. Please set PIAPI_BASE_URL environment variable.")
     elif "your-piapi-server.com" in PIAPI_BASE_URL or "example.com" in PIAPI_BASE_URL:
         log.warning(f"⚠️ PIAPI_BASE_URL is set to placeholder value '{PIAPI_BASE_URL}' - please set it to your actual PIAPI server URL")
+    elif "/api/v1/task" in PIAPI_BASE_URL:
+        log.warning(f"⚠️ PIAPI_BASE_URL should not include the path. Set PIAPI_BASE_URL='https://api.piapi.ai' (without /api/v1/task). Current: {PIAPI_BASE_URL}")
     if not OPENROUTER_API_KEY:
         log.warning("⚠️ OPENROUTER_API_KEY not set - lyrics generation will not work")
 
