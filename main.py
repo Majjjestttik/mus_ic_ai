@@ -344,7 +344,7 @@ Format:
 # PIAPI Suno music generation
 # -------------------------
 async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -> Dict[str, Any]:
-    """Generate music using PIAPI Suno endpoint"""
+    """Generate music using PIAPI Suno endpoint - Step 1: Create task"""
     if not PIAPI_API_KEY:
         raise RuntimeError("PIAPI_API_KEY not set")
     
@@ -392,16 +392,69 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
         log.error(error_msg)
         raise RuntimeError(f"Connection failed: {str(e)}. Please check that PIAPI_BASE_URL is set to a valid server URL.")
 
-def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
-    """Extract audio URLs from PIAPI response
+async def piapi_poll_task(task_id: str, max_attempts: int = 60, delay: int = 5) -> Dict[str, Any]:
+    """Poll PIAPI task until completion - Step 2: Wait for results
     
-    Note: PIAPI returns a task_id initially. The full implementation would need to:
-    1. Get the task_id from the initial response
-    2. Poll GET /api/v1/task/{task_id} until status is 'completed'
-    3. Extract audio URLs from the completed task response
+    Args:
+        task_id: The task ID returned from piapi_generate_music
+        max_attempts: Maximum number of polling attempts (default 60 = 5 minutes)
+        delay: Delay between polling attempts in seconds (default 5)
     
-    For now, this attempts to extract URLs from the response if available.
+    Returns:
+        Complete task response with audio URLs
     """
+    if not PIAPI_API_KEY:
+        raise RuntimeError("PIAPI_API_KEY not set")
+    
+    url = f"{PIAPI_BASE_URL}/api/v1/task/{task_id}"
+    headers = {
+        "X-API-Key": PIAPI_API_KEY,
+    }
+    
+    log.info(f"Polling PIAPI task: {task_id}")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            for attempt in range(max_attempts):
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        raise RuntimeError(f"PIAPI polling error {resp.status}: {text}")
+                    
+                    data = await resp.json()
+                    
+                    # Check task status
+                    if "data" in data:
+                        task_data = data["data"]
+                        status = task_data.get("status", "")
+                        
+                        log.info(f"Task {task_id} status: {status} (attempt {attempt + 1}/{max_attempts})")
+                        
+                        if status == "completed":
+                            log.info(f"Task {task_id} completed successfully")
+                            return data
+                        elif status in ["failed", "error"]:
+                            error_msg = task_data.get("error", "Unknown error")
+                            raise RuntimeError(f"Task failed: {error_msg}")
+                        elif status in ["pending", "processing", "queued"]:
+                            # Task still processing, wait and retry
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            # Unknown status, wait and retry
+                            await asyncio.sleep(delay)
+                            continue
+            
+            # Max attempts reached
+            raise RuntimeError(f"Task polling timeout after {max_attempts * delay} seconds. Task may still be processing.")
+    
+    except aiohttp.ClientError as e:
+        error_msg = f"Cannot poll PIAPI task. Error: {str(e)}"
+        log.error(error_msg)
+        raise RuntimeError(error_msg)
+
+def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
+    """Extract audio URLs from PIAPI completed task response"""
     urls = []
     
     # Check for data in response
@@ -419,6 +472,9 @@ def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
                 for clip in data["clips"]:
                     if isinstance(clip, dict) and "audio_url" in clip:
                         urls.append(clip["audio_url"])
+            # Also check for direct audio_url in data
+            elif "audio_url" in data:
+                urls.append(data["audio_url"])
         
         # If data is a list
         elif isinstance(data, list):
@@ -620,8 +676,26 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(tr(user_id, "generating_music"))
             
             try:
+                # Step 1: Create music generation task
                 result = await piapi_generate_music(lyrics, genre, mood, demo=False)
-                audio_urls = extract_audio_urls(result)
+                
+                # Extract task_id from response
+                task_id = None
+                if "data" in result and isinstance(result["data"], dict):
+                    task_id = result["data"].get("task_id")
+                
+                if not task_id:
+                    log.error(f"No task_id in PIAPI response: {result}")
+                    await query.message.reply_text(tr(user_id, "error").format("No task_id received from API"))
+                    return
+                
+                log.info(f"Music generation task created: {task_id}")
+                
+                # Step 2: Poll for task completion (this may take 1-5 minutes)
+                completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
+                
+                # Step 3: Extract audio URLs from completed task
+                audio_urls = extract_audio_urls(completed_result)
                 
                 if audio_urls:
                     for url in audio_urls:
