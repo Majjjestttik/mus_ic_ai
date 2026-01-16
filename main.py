@@ -350,76 +350,96 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=lang_keyboard())
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    data = query.data
-    
-    if data.startswith("lang:"):
-        lang = data.split(":")[1]
-        await asyncio.to_thread(set_lang, user_id, lang)
-        await query.edit_message_text(
-            tr(user_id, "language_set"),
-            reply_markup=menu_keyboard(lang)
-        )
-    
-    elif data == "buy":
-        user = await asyncio.to_thread(get_user, user_id)
-        balance = user.get("balance", 0)
-        text = f"{tr(user_id, 'buy')}\n{tr(user_id, 'balance').format(balance)}"
-        await query.edit_message_text(text, reply_markup=buy_keyboard(user.get("lang", "en"), user_id))
-    
-    elif data.startswith("buypack:"):
-        pack_id = data.split(":")[1]
-        try:
-            url = create_checkout_session(user_id, pack_id)
-            await query.edit_message_text(f"Click to complete payment:\n{url}")
-        except Exception as e:
-            await query.edit_message_text(tr(user_id, "error").format(str(e)))
-    
-    elif data.startswith("genre:"):
-        genre = data.split(":")[1]
-        context.user_data["genre"] = genre
-        await query.edit_message_text(f"Genre: {genre}\nNow choose mood:", reply_markup=moods_keyboard("en"))
-    
-    elif data.startswith("mood:"):
-        mood = data.split(":")[1]
-        context.user_data["mood"] = mood
-        await query.edit_message_text(f"Mood: {mood}\n\nNow tell me about your song!")
-    
-    elif data.startswith("generate:"):
-        # Generate music from lyrics
-        user_data = context.user_data
-        lyrics = user_data.get("lyrics", "")
-        genre = user_data.get("genre", "Pop")
-        mood = user_data.get("mood", "Happy")
-        
-        if not lyrics:
-            await query.edit_message_text(tr(user_id, "error").format("No lyrics found"))
+    try:
+        query = update.callback_query
+        if not query:
+            log.warning("Callback query is None")
             return
-        
-        # Check balance
-        can_generate = await asyncio.to_thread(consume_song, user_id)
-        if not can_generate:
-            await query.edit_message_text(tr(user_id, "error").format("Insufficient balance"))
-            return
-        
-        await query.edit_message_text("🎶 ГЕНЕРАЦИЯ ПЕСНИ НАЧАЛАСЬ! ⚡️\nОбычно занимает не более 5 минут.\nЯ сообщу, как только будет готово 🎧")
-        
-        try:
-            result = await piapi_generate_music(lyrics, genre, mood, demo=False)
-            audio_urls = extract_audio_urls(result)
             
-            if audio_urls:
-                for url in audio_urls:
-                    await query.message.reply_audio(url)
-                await query.message.reply_text(tr(user_id, "done"))
-            else:
-                await query.message.reply_text(tr(user_id, "error").format("No audio generated"))
+        user_id = query.from_user.id
+        data = query.data
+        
+        log.info(f"Callback from user {user_id}: {data}")
+        
+        # Answer the callback query first
+        try:
+            await query.answer()
         except Exception as e:
-            log.error(f"Music generation error: {e}")
-            await query.message.reply_text(tr(user_id, "error").format(str(e)))
+            log.error(f"Failed to answer callback query: {e}")
+        
+        if data.startswith("lang:"):
+            lang = data.split(":")[1]
+            await asyncio.to_thread(set_lang, user_id, lang)
+            await query.edit_message_text(
+                tr(user_id, "language_set"),
+                reply_markup=menu_keyboard(lang)
+            )
+        
+        elif data == "buy":
+            user = await asyncio.to_thread(get_user, user_id)
+            balance = user.get("balance", 0)
+            text = f"{tr(user_id, 'buy')}\n{tr(user_id, 'balance').format(balance)}"
+            await query.edit_message_text(text, reply_markup=buy_keyboard(user.get("lang", "en"), user_id))
+        
+        elif data.startswith("buypack:"):
+            pack_id = data.split(":")[1]
+            try:
+                url = create_checkout_session(user_id, pack_id)
+                await query.edit_message_text(f"Click to complete payment:\n{url}")
+            except Exception as e:
+                log.error(f"Checkout session error: {e}")
+                await query.edit_message_text(tr(user_id, "error").format(str(e)))
+        
+        elif data.startswith("genre:"):
+            genre = data.split(":")[1]
+            context.user_data["genre"] = genre
+            await query.edit_message_text(f"Genre: {genre}\nNow choose mood:", reply_markup=moods_keyboard("en"))
+        
+        elif data.startswith("mood:"):
+            mood = data.split(":")[1]
+            context.user_data["mood"] = mood
+            await query.edit_message_text(f"Mood: {mood}\n\nNow tell me about your song!")
+        
+        elif data.startswith("generate:"):
+            # Generate music from lyrics
+            user_data = context.user_data
+            lyrics = user_data.get("lyrics", "")
+            genre = user_data.get("genre", "Pop")
+            mood = user_data.get("mood", "Happy")
+            
+            if not lyrics:
+                await query.edit_message_text(tr(user_id, "error").format("No lyrics found"))
+                return
+            
+            # Check balance
+            can_generate = await asyncio.to_thread(consume_song, user_id)
+            if not can_generate:
+                await query.edit_message_text(tr(user_id, "error").format("Insufficient balance"))
+                return
+            
+            await query.edit_message_text("🎶 ГЕНЕРАЦИЯ ПЕСНИ НАЧАЛАСЬ! ⚡️\nОбычно занимает не более 5 минут.\nЯ сообщу, как только будет готово 🎧")
+            
+            try:
+                result = await piapi_generate_music(lyrics, genre, mood, demo=False)
+                audio_urls = extract_audio_urls(result)
+                
+                if audio_urls:
+                    for url in audio_urls:
+                        await query.message.reply_audio(url)
+                    await query.message.reply_text(tr(user_id, "done"))
+                else:
+                    await query.message.reply_text(tr(user_id, "error").format("No audio generated"))
+            except Exception as e:
+                log.error(f"Music generation error: {e}")
+                await query.message.reply_text(tr(user_id, "error").format(str(e)))
+        else:
+            log.warning(f"Unknown callback data: {data}")
+            
+    except Exception as e:
+        log.error(f"Error in on_callback handler: {e}", exc_info=True)
+        try:
+            if update and update.callback_query:
+                await update.callback_query.message.reply_text("❌ An error occurred. Please try again.")
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
