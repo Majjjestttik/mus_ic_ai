@@ -71,49 +71,137 @@ TRANSLATIONS = {
         "welcome": "🎵 Ласкаво просимо до MusicAI PRO!\nЯ допоможу створити персональну пісню.",
         "choose_language": "Оберіть мову:",
         "language_set": "Мову встановлено: Українська 🇺🇦",
+        "choose_genre": "🎵 Чудово! Тепер оберіть жанр для вашої пісні:",
+        "choose_mood": "Жанр: {}\n\n🎭 Тепер оберіть настрій пісні:",
+        "describe_song": "Настрій: {}\n\n✍️ Тепер розкажіть, про що ваша пісня!",
         "menu": "📋 Головне меню",
         "buy": "💎 Купити пісні",
         "balance": "Баланс: {} пісень",
         "generating": "🎶 Генерую вашу пісню...",
+        "generating_music": "🎶 ГЕНЕРАЦІЯ МУЗИКИ ПОЧАЛАСЬ! ⚡️\nЗазвичай займає не більше 5 хвилин.\nЯ повідомлю, як тільки буде готово 🎧",
         "done": "✅ Готово!",
         "error": "❌ Помилка: {}",
+        "no_lyrics": "Тексти не знайдено",
+        "no_balance": "Недостатньо балансу",
+        "no_audio": "Аудіо не згенеровано",
         "payment_success": "✅ Оплата пройшла успішно!\n\n💎 +{songs} пісень додано на ваш баланс.\n🎵 Ваш баланс: {balance} пісень\n\nТепер ви можете створювати персональні пісні!",
+        "help": """🎵 MusicAI PRO - Створюй унікальні пісні!
+
+Як використовувати:
+1️⃣ Виберіть мову інтерфейсу
+2️⃣ Виберіть жанр музики
+3️⃣ Виберіть настрій пісні
+4️⃣ Опишіть про що ваша пісня
+5️⃣ Я створю текст і музику!
+
+💎 Вартість: 1 пісня = 1 кредит
+💰 Купити пісні: /menu → Купити пісні
+🌍 Змінити мову: /language
+
+Питання? Напишіть @support""",
+        "choose_genre_first": "Спочатку оберіть жанр:",
     },
     "en": {
         "welcome": "🎵 Welcome to MusicAI PRO!\nI'll help you create personalized songs.",
         "choose_language": "Choose your language:",
         "language_set": "Language set to English 🇬🇧",
+        "choose_genre": "🎵 Great! Now choose a genre for your song:",
+        "choose_mood": "Genre: {}\n\n🎭 Now choose the mood of your song:",
+        "describe_song": "Mood: {}\n\n✍️ Now tell me what your song is about!",
         "menu": "📋 Main Menu",
         "buy": "💎 Buy Songs",
         "balance": "Balance: {} songs",
         "generating": "🎶 Generating your song...",
+        "generating_music": "🎶 MUSIC GENERATION STARTED! ⚡️\nUsually takes no more than 5 minutes.\nI'll notify you when it's ready 🎧",
         "done": "✅ Done!",
         "error": "❌ Error: {}",
+        "no_lyrics": "No lyrics found",
+        "no_balance": "Insufficient balance",
+        "no_audio": "No audio generated",
         "payment_success": "✅ Payment successful!\n\n💎 +{songs} songs added to your balance.\n🎵 Your balance: {balance} songs\n\nYou can now create your personalized songs!",
+        "help": """🎵 MusicAI PRO - Create unique songs!
+
+How to use:
+1️⃣ Choose interface language
+2️⃣ Select music genre
+3️⃣ Select song mood
+4️⃣ Describe what your song is about
+5️⃣ I'll create lyrics and music!
+
+💎 Cost: 1 song = 1 credit
+💰 Buy songs: /menu → Buy Songs
+🌍 Change language: /language
+
+Questions? Contact @support""",
+        "choose_genre_first": "Choose genre first:",
     },
     "ru": {
         "welcome": "🎵 Добро пожаловать в MusicAI PRO!\nЯ помогу создать персональную песню.",
         "choose_language": "Выберите язык:",
         "language_set": "Язык установлен: Русский 🇷🇺",
+        "choose_genre": "🎵 Отлично! Теперь выберите жанр для вашей песни:",
+        "choose_mood": "Жанр: {}\n\n🎭 Теперь выберите настроение песни:",
+        "describe_song": "Настроение: {}\n\n✍️ Теперь расскажите, о чём ваша песня!",
         "menu": "📋 Главное меню",
         "buy": "💎 Купить песни",
         "balance": "Баланс: {} песен",
         "generating": "🎶 Генерирую вашу песню...",
+        "generating_music": "🎶 ГЕНЕРАЦИЯ МУЗЫКИ НАЧАЛАСЬ! ⚡️\nОбычно занимает не более 5 минут.\nЯ сообщу, как только будет готово 🎧",
         "done": "✅ Готово!",
         "error": "❌ Ошибка: {}",
+        "no_lyrics": "Тексты не найдены",
+        "no_balance": "Недостаточно баланса",
+        "no_audio": "Аудио не сгенерировано",
         "payment_success": "✅ Оплата прошла успешно!\n\n💎 +{songs} песен добавлено на ваш баланс.\n🎵 Ваш баланс: {balance} песен\n\nТеперь вы можете создавать персональные песни!",
+        "help": """🎵 MusicAI PRO - Создавай уникальные песни!
+
+Как использовать:
+1️⃣ Выберите язык интерфейса
+2️⃣ Выберите жанр музыки
+3️⃣ Выберите настроение песни
+4️⃣ Опишите о чём ваша песня
+5️⃣ Я создам текст и музыку!
+
+💎 Стоимость: 1 песня = 1 кредит
+💰 Купить песни: /menu → Купить песни
+🌍 Изменить язык: /language
+
+Вопросы? Напишите @support""",
+        "choose_genre_first": "Сначала выберите жанр:",
     },
     "pl": {
         "welcome": "🎵 Witamy w MusicAI PRO!\nPomogę Ci stworzyć spersonalizowaną piosenkę.",
         "choose_language": "Wybierz język:",
         "language_set": "Język ustawiony: Polski 🇵🇱",
+        "choose_genre": "🎵 Świetnie! Teraz wybierz gatunek dla twojej piosenki:",
+        "choose_mood": "Gatunek: {}\n\n🎭 Teraz wybierz nastrój piosenki:",
+        "describe_song": "Nastrój: {}\n\n✍️ Teraz powiedz mi o czym jest twoja piosenka!",
         "menu": "📋 Menu główne",
         "buy": "💎 Kup piosenki",
         "balance": "Saldo: {} piosenek",
         "generating": "🎶 Generuję twoją piosenkę...",
+        "generating_music": "🎶 GENERACJA MUZYKI ROZPOCZĘTA! ⚡️\nZwykle trwa nie więcej niż 5 minut.\nPowiadomię Cię, gdy będzie gotowe 🎧",
         "done": "✅ Gotowe!",
         "error": "❌ Błąd: {}",
+        "no_lyrics": "Nie znaleziono tekstów",
+        "no_balance": "Niewystarczające saldo",
+        "no_audio": "Nie wygenerowano audio",
         "payment_success": "✅ Płatność zakończona sukcesem!\n\n💎 +{songs} piosenek dodano do twojego salda.\n🎵 Twoje saldo: {balance} piosenek\n\nTeraz możesz tworzyć spersonalizowane piosenki!",
+        "help": """🎵 MusicAI PRO - Twórz unikalne piosenki!
+
+Jak używać:
+1️⃣ Wybierz język interfejsu
+2️⃣ Wybierz gatunek muzyki
+3️⃣ Wybierz nastrój piosenki
+4️⃣ Opisz o czym jest twoja piosenka
+5️⃣ Stworzę tekst i muzykę!
+
+💎 Koszt: 1 piosenka = 1 kredyt
+💰 Kup piosenki: /menu → Kup piosenki
+🌍 Zmień język: /language
+
+Pytania? Skontaktuj się @support""",
+        "choose_genre_first": "Najpierw wybierz gatunek:",
     },
 }
 
@@ -412,12 +500,20 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=lang_keyboard())
 
 async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show language selection menu"""
+    """Show main menu"""
     user_id = update.effective_user.id
     await asyncio.to_thread(ensure_user, user_id)
     
-    text = tr(user_id, "choose_language")
-    await update.message.reply_text(text, reply_markup=lang_keyboard())
+    user = await asyncio.to_thread(get_user, user_id)
+    lang = user.get("lang", "uk")
+    await update.message.reply_text(tr(user_id, "menu"), reply_markup=menu_keyboard(lang))
+
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Change language"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    await update.message.reply_text(tr(user_id, "choose_language"), reply_markup=lang_keyboard())
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -452,7 +548,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["lang"] = lang
             # Go directly to genre selection for song creation
             await query.edit_message_text(
-                "🎵 Great! Now choose a genre for your song:",
+                tr(user_id, "choose_genre"),
                 reply_markup=genres_keyboard(lang)
             )
         
@@ -481,54 +577,28 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "help":
             user = await asyncio.to_thread(get_user, user_id)
             lang = user.get("lang", "uk")
-            help_text = """🎵 MusicAI PRO - Створюй унікальні пісні!
-
-Як використовувати:
-1️⃣ Оберіть мову інтерфейсу
-2️⃣ Оберіть жанр музики
-3️⃣ Оберіть настрій пісні
-4️⃣ Опишіть про що ваша пісня
-5️⃣ Я створю текст і музику!
-
-💎 Вартість: 1 пісня = 1 кредит
-💰 Купити пісні: /menu → Купити пісні
-
-Питання? Напишіть @support""" if lang == "uk" else """🎵 MusicAI PRO - Create unique songs!
-
-How to use:
-1️⃣ Choose interface language
-2️⃣ Select music genre
-3️⃣ Select song mood
-4️⃣ Describe what your song is about
-5️⃣ I'll create lyrics and music!
-
-💎 Cost: 1 song = 1 credit
-💰 Buy songs: /menu → Buy Songs
-
-Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Создавай уникальные песни!
-
-Как использовать:
-1️⃣ Выберите язык интерфейса
-2️⃣ Выберите жанр музыки
-3️⃣ Выберите настроение песни
-4️⃣ Опишите о чём ваша песня
-5️⃣ Я создам текст и музыку!
-
-💎 Стоимость: 1 песня = 1 кредит
-💰 Купить песни: /menu → Купить песни
-
-Вопросы? Напишите @support"""
-            await query.edit_message_text(help_text, reply_markup=menu_keyboard(lang))
+            await query.edit_message_text(tr(user_id, "help"), reply_markup=menu_keyboard(lang))
         
         elif data.startswith("genre:"):
             genre = data.split(":")[1]
             context.user_data["genre"] = genre
-            await query.edit_message_text(f"Genre: {genre}\nNow choose mood:", reply_markup=moods_keyboard("en"))
+            # Get user language
+            lang = context.user_data.get("lang")
+            if not lang:
+                user = await asyncio.to_thread(get_user, user_id)
+                lang = user.get("lang", "en")
+                context.user_data["lang"] = lang
+            await query.edit_message_text(
+                tr(user_id, "choose_mood").format(genre),
+                reply_markup=moods_keyboard(lang)
+            )
         
         elif data.startswith("mood:"):
             mood = data.split(":")[1]
             context.user_data["mood"] = mood
-            await query.edit_message_text(f"Mood: {mood}\n\nNow tell me about your song!")
+            await query.edit_message_text(
+                tr(user_id, "describe_song").format(mood)
+            )
         
         elif data.startswith("generate:"):
             # Generate music from lyrics
@@ -538,16 +608,16 @@ Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Соз
             mood = user_data.get("mood", "Happy")
             
             if not lyrics:
-                await query.edit_message_text(tr(user_id, "error").format("No lyrics found"))
+                await query.edit_message_text(tr(user_id, "error").format(tr(user_id, "no_lyrics")))
                 return
             
             # Check balance
             can_generate = await asyncio.to_thread(consume_song, user_id)
             if not can_generate:
-                await query.edit_message_text(tr(user_id, "error").format("Insufficient balance"))
+                await query.edit_message_text(tr(user_id, "error").format(tr(user_id, "no_balance")))
                 return
             
-            await query.edit_message_text("🎶 ГЕНЕРАЦИЯ ПЕСНИ НАЧАЛАСЬ! ⚡️\nОбычно занимает не более 5 минут.\nЯ сообщу, как только будет готово 🎧")
+            await query.edit_message_text(tr(user_id, "generating_music"))
             
             try:
                 result = await piapi_generate_music(lyrics, genre, mood, demo=False)
@@ -558,7 +628,7 @@ Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Соз
                         await query.message.reply_audio(url)
                     await query.message.reply_text(tr(user_id, "done"))
                 else:
-                    await query.message.reply_text(tr(user_id, "error").format("No audio generated"))
+                    await query.message.reply_text(tr(user_id, "error").format(tr(user_id, "no_audio")))
             except Exception as e:
                 log.error(f"Music generation error: {e}")
                 await query.message.reply_text(tr(user_id, "error").format(str(e)))
@@ -618,7 +688,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(tr(user_id, "error").format(str(e)))
     else:
         # Start the flow
-        await update.message.reply_text("Choose genre first:", reply_markup=genres_keyboard("en"))
+        await update.message.reply_text(tr(user_id, "choose_genre_first"), reply_markup=genres_keyboard("en"))
 
 # -------------------------
 # FastAPI (Stripe webhook)
@@ -739,6 +809,7 @@ async def start_telegram_bot():
 
     telegram_app.add_handler(CommandHandler("start", cmd_start))
     telegram_app.add_handler(CommandHandler("menu", cmd_menu))
+    telegram_app.add_handler(CommandHandler("language", cmd_language))
     telegram_app.add_handler(CallbackQueryHandler(on_callback))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
