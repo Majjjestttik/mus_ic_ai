@@ -363,6 +363,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         log.info(f"Callback from user {user_id}: {data}")
         
+        # Ensure user exists in database first
+        try:
+            await asyncio.to_thread(ensure_user, user_id)
+        except Exception as db_err:
+            log.error(f"Failed to ensure user {user_id} in database: {db_err}", exc_info=True)
+            await query.answer("❌ Database error. Please contact support.", show_alert=True)
+            return
+        
         # Answer the callback query first
         try:
             await query.answer()
@@ -487,10 +495,17 @@ Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Соз
             log.warning(f"Unknown callback data: {data}")
             
     except Exception as e:
-        log.error(f"Error in on_callback handler: {e}", exc_info=True)
+        error_msg = str(e)
+        log.error(f"Error in on_callback handler: {error_msg}", exc_info=True)
         try:
             if update and update.callback_query:
-                await update.callback_query.message.reply_text("❌ An error occurred. Please try again.")
+                # Try to send a more helpful error message
+                if "DATABASE_URL" in error_msg or "psycopg" in error_msg:
+                    await update.callback_query.answer("❌ Database connection error. Please contact support.", show_alert=True)
+                elif "user" in error_msg.lower():
+                    await update.callback_query.answer("❌ User error. Try /start to reinitialize.", show_alert=True)
+                else:
+                    await update.callback_query.answer(f"❌ Error: {error_msg[:100]}", show_alert=True)
         except Exception as reply_error:
             log.error(f"Failed to send error message to user: {reply_error}")
 
