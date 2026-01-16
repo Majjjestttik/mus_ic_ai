@@ -4,3 +4,5 @@ fastapi==0.115.5
 uvicorn==0.32.1
 stripe==11.1.0
 psycopg[binary]==3.2.3
+aiohttp==3.9.1
+python-dotenv==1.0.0

@@ -1,249 +1,682 @@
-# -*- coding: utf-8 -*-
 import os
-import sys
 import json
-import logging
 import asyncio
+import logging
+from typing import Dict, Any, Optional
+
 import aiohttp
+import stripe
 import psycopg
 from psycopg.rows import dict_row
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+
+from dotenv import load_dotenv
+
+from fastapi import FastAPI, Request, Header, HTTPException
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.constants import ParseMode
 from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ConversationHandler, ContextTypes, PreCheckoutQueryHandler
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
 )
 
-# =========================
-# CONFIG & ENV
-# =========================
+# Load environment variables
+load_dotenv()
+
+# -------------------------
+# Configuration
+# -------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+
 PIAPI_API_KEY = os.getenv("PIAPI_API_KEY", "").strip()
-STRIPE_PROVIDER_TOKEN = os.getenv("STRIPE_PROVIDER_TOKEN", "").strip()
-PIAPI_BASE_URL = "https://api.piapi.ai/api/suno/v1"
+PIAPI_BASE_URL = os.getenv("PIAPI_BASE_URL", "").strip().rstrip("/")
+PIAPI_GENERATE_PATH = os.getenv("PIAPI_GENERATE_PATH", "/suno/music").strip()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
-logger = logging.getLogger("musicai")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-# Состояния ConversationHandler
-ST_LANG, ST_MENU, ST_MOOD, ST_GENRE, ST_TOPIC, ST_EDIT_LYRICS = range(6)
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+# Get bot username for Telegram redirect URLs
+BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip()
+# Default redirect URLs point back to Telegram bot
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "").strip()
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"https://t.me/{BOT_USERNAME}" if BOT_USERNAME else "").strip()
 
-# Настройки данных
-LANGS = {"en": "English", "uk": "Українська", "ru": "Русский", "pl": "Polski", "de": "Deutsch", "es": "Español", "fr": "Français"}
-MOODS = ["Happy", "Sad", "Romantic", "Energetic", "Calm", "Dark"]
-GENRES = ["Pop", "Rock", "Hip-Hop", "EDM", "R&B", "Jazz", "Metal", "Classical"]
-PACKS = {
-    "pack_1": {"songs": 1, "stars": 300, "eur": 500},
-    "pack_5": {"songs": 5, "stars": 1000, "eur": 2000},
-    "pack_25": {"songs": 25, "stars": 2500, "eur": 5000},
-}
+# -------------------------
+# Logging
+# -------------------------
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
-# Словарь локализации (RU/EN для примера, остальные добавляются так же)
-STRINGS = {
-    "ru": {
-        "welcome": "Добро пожаловать в MusicAI!",
-        "help": "<b>Инструкция:</b>\n1. Нажмите 'Создать'.\n2. Выберите жанр и настроение.\n3. Опишите тему.\n4. Получите песню!",
-        "profile": "👤 Профиль\nID: {}\nБаланс: {} песен",
-        "buy": "Пополнение баланса:",
-        "mood": "Выбери настроение:",
-        "genre": "Выбери жанр:",
-        "topic": "Напиши тему песни (о чем она?):",
-        "lyrics_ready": "<b>Ваш текст:</b>\n\n{}\n\nЧто делаем?",
-        "wait_gen": "⏳ Генерирую музыку... Пожалуйста, подождите 1-3 минуты.",
-        "error": "❌ Произошла ошибка. Попробуйте снова.",
-        "no_balance": "❌ Недостаточно баланса. Пополните счет."
+# -------------------------
+# Stripe initialization
+# -------------------------
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+
+# -------------------------
+# Translations
+# -------------------------
+TRANSLATIONS = {
+    "uk": {
+        "welcome": "🎵 Ласкаво просимо до MusicAI PRO!\nЯ допоможу створити персональну пісню.",
+        "choose_language": "Оберіть мову:",
+        "language_set": "Мову встановлено: Українська 🇺🇦",
+        "menu": "📋 Головне меню",
+        "buy": "💎 Купити пісні",
+        "balance": "Баланс: {} пісень",
+        "generating": "🎶 Генерую вашу пісню...",
+        "done": "✅ Готово!",
+        "error": "❌ Помилка: {}",
+        "payment_success": "✅ Оплата пройшла успішно!\n\n💎 +{songs} пісень додано на ваш баланс.\n🎵 Ваш баланс: {balance} пісень\n\nТепер ви можете створювати персональні пісні!",
     },
     "en": {
-        "welcome": "Welcome to MusicAI!",
-        "help": "<b>Help:</b>\n1. Press 'Create'.\n2. Pick genre & mood.\n3. Describe topic.\n4. Get your song!",
-        "profile": "👤 Profile\nID: {}\nBalance: {} songs",
-        "buy": "Refill balance:",
-        "mood": "Choose mood:",
-        "genre": "Choose genre:",
-        "topic": "Enter song topic (what is it about?):",
-        "lyrics_ready": "<b>Your lyrics:</b>\n\n{}\n\nWhat's next?",
-        "wait_gen": "⏳ Generating music... Please wait 1-3 minutes.",
-        "error": "❌ Error occurred. Try again.",
-        "no_balance": "❌ Low balance. Please refill."
-    }
+        "welcome": "🎵 Welcome to MusicAI PRO!\nI'll help you create personalized songs.",
+        "choose_language": "Choose your language:",
+        "language_set": "Language set to English 🇬🇧",
+        "menu": "📋 Main Menu",
+        "buy": "💎 Buy Songs",
+        "balance": "Balance: {} songs",
+        "generating": "🎶 Generating your song...",
+        "done": "✅ Done!",
+        "error": "❌ Error: {}",
+        "payment_success": "✅ Payment successful!\n\n💎 +{songs} songs added to your balance.\n🎵 Your balance: {balance} songs\n\nYou can now create your personalized songs!",
+    },
+    "ru": {
+        "welcome": "🎵 Добро пожаловать в MusicAI PRO!\nЯ помогу создать персональную песню.",
+        "choose_language": "Выберите язык:",
+        "language_set": "Язык установлен: Русский 🇷🇺",
+        "menu": "📋 Главное меню",
+        "buy": "💎 Купить песни",
+        "balance": "Баланс: {} песен",
+        "generating": "🎶 Генерирую вашу песню...",
+        "done": "✅ Готово!",
+        "error": "❌ Ошибка: {}",
+        "payment_success": "✅ Оплата прошла успешно!\n\n💎 +{songs} песен добавлено на ваш баланс.\n🎵 Ваш баланс: {balance} песен\n\nТеперь вы можете создавать персональные песни!",
+    },
+    "pl": {
+        "welcome": "🎵 Witamy w MusicAI PRO!\nPomogę Ci stworzyć spersonalizowaną piosenkę.",
+        "choose_language": "Wybierz język:",
+        "language_set": "Język ustawiony: Polski 🇵🇱",
+        "menu": "📋 Menu główne",
+        "buy": "💎 Kup piosenki",
+        "balance": "Saldo: {} piosenek",
+        "generating": "🎶 Generuję twoją piosenkę...",
+        "done": "✅ Gotowe!",
+        "error": "❌ Błąd: {}",
+        "payment_success": "✅ Płatność zakończona sukcesem!\n\n💎 +{songs} piosenek dodano do twojego salda.\n🎵 Twoje saldo: {balance} piosenek\n\nTeraz możesz tworzyć spersonalizowane piosenki!",
+    },
 }
 
-def gt(user_lang, key):
-    return STRINGS.get(user_lang, STRINGS["en"]).get(key, key)
+LANGS = ["uk", "en", "ru", "es", "fr", "de", "pl"]
 
-# =========================
-# SYSTEM: LOCK & DB
-# =========================
-LOCK_FILE = "bot.lock"
+# -------------------------
+# Pricing packs
+# -------------------------
+PACKS = {
+    "pack_1": {"songs": 1, "price": 6.00, "label": "1 song - €6.00"},
+    "pack_5": {"songs": 5, "price": 20.00, "label": "5 songs - €20.00"},
+    "pack_30": {"songs": 30, "price": 50.00, "label": "30 songs - €50.00"},
+}
 
-def check_instance():
-    if os.path.exists(LOCK_FILE):
-        logger.error("Bot is already running. PID lock exists.")
-        sys.exit(1)
-    with open(LOCK_FILE, "w") as f: f.write(str(os.getpid()))
-
-def db_conn(): return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+# -------------------------
+# DB helpers (sync, call via asyncio.to_thread)
+# -------------------------
+def db_conn():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set")
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def init_db():
     with db_conn() as conn:
-        conn.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, lang TEXT DEFAULT 'en', balance INT DEFAULT 0);")
-        conn.execute("CREATE TABLE IF NOT EXISTS orders (id SERIAL PRIMARY KEY, user_id BIGINT, provider TEXT, songs INT, amount INT, currency TEXT, created_at TIMESTAMPTZ DEFAULT NOW());")
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            lang TEXT NOT NULL DEFAULT 'uk',
+            balance INT NOT NULL DEFAULT 0,
+            demo_used INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """)
         conn.commit()
 
-# =========================
-# AI API LOGIC
-# =========================
-async def api_gen_lyrics(mood, genre, topic):
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-    async with aiohttp.ClientSession() as s:
-        async with s.post(url, headers=headers, json={
-            "model": "openai/gpt-4o-mini",
-            "messages": [{"role": "user", "content": f"Write lyrics for a {mood} {genre} song about: {topic}"}]
-        }) as r:
-            res = await r.json()
-            return res['choices'][0]['message']['content']
+def ensure_user(user_id: int):
+    with db_conn() as conn:
+        conn.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
+        conn.commit()
 
-async def api_gen_music(lyrics, mood, genre):
-    url = f"{PIAPI_BASE_URL}/submit/custom"
-    headers = {"x-api-key": PIAPI_API_KEY}
-    async with aiohttp.ClientSession() as s:
-        async with s.post(url, headers=headers, json={"prompt": lyrics, "tags": f"{genre}, {mood}"}) as r:
-            return await r.json()
+def set_lang(user_id: int, lang: str):
+    ensure_user(user_id)
+    with db_conn() as conn:
+        conn.execute("UPDATE users SET lang=%s WHERE user_id=%s", (lang, user_id))
+        conn.commit()
 
-# =========================
-# UI HELPERS
-# =========================
-def get_main_kb(l):
+def get_user(user_id: int) -> Dict[str, Any]:
+    ensure_user(user_id)
+    with db_conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE user_id=%s", (user_id,)).fetchone()
+        return dict(row) if row else {}
+
+def add_balance(user_id: int, songs: int):
+    ensure_user(user_id)
+    with db_conn() as conn:
+        conn.execute("UPDATE users SET balance=balance+%s WHERE user_id=%s", (songs, user_id))
+        conn.commit()
+
+def consume_song(user_id: int) -> bool:
+    ensure_user(user_id)
+    with db_conn() as conn:
+        row = conn.execute("SELECT balance FROM users WHERE user_id=%s", (user_id,)).fetchone()
+        if not row or row["balance"] < 1:
+            return False
+        conn.execute("UPDATE users SET balance=balance-1 WHERE user_id=%s", (user_id,))
+        conn.commit()
+        return True
+
+# -------------------------
+# Helpers
+# -------------------------
+def tr(user_id: int, key: str) -> str:
+    """Translate text for user"""
+    user = get_user(user_id)
+    lang = user.get("lang", "uk")
+    return TRANSLATIONS.get(lang, TRANSLATIONS["uk"]).get(key, key)
+
+# -------------------------
+# OpenRouter lyrics generation
+# -------------------------
+async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -> str:
+    """Generate song lyrics using OpenRouter"""
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY not set")
+
+    prompt = f"""Create song lyrics in {lang_code} language.
+Topic: {topic}
+Genre: {genre}
+Mood: {mood}
+
+IMPORTANT: Write lyrics with proper rhyme scheme. Each verse should have rhyming lines.
+Format: 
+[Verse 1]
+...lyrics with rhymes...
+
+[Chorus]
+...catchy chorus with rhymes...
+
+[Verse 2]
+...more lyrics with rhymes...
+"""
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "openai/gpt-3.5-turbo",
+                "messages": [{"role": "user", "content": prompt}],
+            },
+        ) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"OpenRouter error: {text}")
+            data = await resp.json()
+            return data["choices"][0]["message"]["content"]
+
+# -------------------------
+# PIAPI Suno music generation
+# -------------------------
+async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -> Dict[str, Any]:
+    """Generate music using PIAPI Suno endpoint"""
+    if not PIAPI_API_KEY:
+        raise RuntimeError("PIAPI_API_KEY not set")
+    
+    url = f"{PIAPI_BASE_URL}{PIAPI_GENERATE_PATH}"
+    
+    payload = {
+        "lyrics": lyrics,
+        "tags": f"{genre}, {mood}",
+        "title": f"{genre} song",
+        "make_instrumental": False,
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {PIAPI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"PIAPI error {resp.status}: {text}")
+            return await resp.json()
+
+def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
+    """Extract audio URLs from PIAPI response"""
+    urls = []
+    if "data" in piapi_resp:
+        for item in piapi_resp["data"]:
+            if "audio_url" in item:
+                urls.append(item["audio_url"])
+    return urls
+
+# -------------------------
+# Keyboards
+# -------------------------
+def lang_keyboard() -> InlineKeyboardMarkup:
+    buttons = []
+    for lang in LANGS:
+        flag = {"uk": "🇺🇦", "en": "🇬🇧", "ru": "🇷🇺", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪", "it": "��🇹", "pt": "🇵🇹"}.get(lang, "🌍")
+        buttons.append([InlineKeyboardButton(f"{flag} {lang.upper()}", callback_data=f"lang:{lang}")])
+    return InlineKeyboardMarkup(buttons)
+
+def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
+    user_trans = TRANSLATIONS.get(lang, TRANSLATIONS["uk"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎵 Create", callback_data="btn:create"), InlineKeyboardButton("💳 Buy", callback_data="btn:buy")],
-        [InlineKeyboardButton("👤 Profile", callback_data="btn:profile"), InlineKeyboardButton("ℹ️ Help", callback_data="btn:help")]
+        [InlineKeyboardButton("💰 " + user_trans["buy"], callback_data="buy")],
+        [InlineKeyboardButton("💎 Баланс" if lang in ["uk", "ru"] else ("Saldo" if lang == "pl" else "Balance"), callback_data="balance")],
+        [InlineKeyboardButton("❓ Допомога" if lang == "uk" else ("Помощь" if lang == "ru" else ("Pomoc" if lang == "pl" else "Help")), callback_data="help")],
     ])
 
-# =========================
-# HANDLERS
-# =========================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    with db_conn() as conn:
-        user = conn.execute("SELECT * FROM users WHERE user_id=%s", (user_id,)).fetchone()
-        if not user:
-            conn.execute("INSERT INTO users (user_id) VALUES (%s)", (user_id,))
-            conn.commit()
-            await update.message.reply_text("Choose Language:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(v, callback_data=f"lang:{k}")] for k, v in LANGS.items()]))
-            return ST_LANG
-    await update.message.reply_text(gt(user['lang'], "welcome"), reply_markup=get_main_kb(user['lang']))
-    return ST_MENU
+def genres_keyboard(lang: str) -> InlineKeyboardMarkup:
+    genres = ["Pop", "Rock", "Hip-Hop", "Classical", "Club", "Custom"]
+    buttons = [[InlineKeyboardButton(g, callback_data=f"genre:{g}")] for g in genres]
+    return InlineKeyboardMarkup(buttons)
 
-async def select_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    lang = query.data.split(":")[1]
-    with db_conn() as conn:
-        conn.execute("UPDATE users SET lang=%s WHERE user_id=%s", (lang, update.effective_user.id))
-        conn.commit()
-    await query.message.edit_text(gt(lang, "welcome"), reply_markup=get_main_kb(lang))
-    return ST_MENU
+def moods_keyboard(lang: str) -> InlineKeyboardMarkup:
+    moods = ["Happy", "Sad", "Love", "Party", "Support", "Custom"]
+    buttons = [[InlineKeyboardButton(m, callback_data=f"mood:{m}")] for m in moods]
+    return InlineKeyboardMarkup(buttons)
 
-async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = update.effective_user.id
-    with db_conn() as conn: user = conn.execute("SELECT * FROM users WHERE user_id=%s", (user_id,)).fetchone()
-    l = user['lang']
+def buy_keyboard(lang: str, user_id: int) -> InlineKeyboardMarkup:
+    buttons = []
+    for pack_id, pack_data in PACKS.items():
+        label = pack_data["label"]
+        buttons.append([InlineKeyboardButton(label, callback_data=f"buypack:{pack_id}")])
+    return InlineKeyboardMarkup(buttons)
+
+def create_checkout_session(user_id: int, pack_id: str) -> str:
+    """Create Stripe checkout session and return URL"""
+    if not STRIPE_SECRET_KEY:
+        raise RuntimeError("Stripe not configured")
     
-    if query.data == "btn:help":
-        await query.message.edit_text(gt(l, "help"), parse_mode=ParseMode.HTML, reply_markup=get_main_kb(l))
-    elif query.data == "btn:profile":
-        await query.message.edit_text(gt(l, "profile").format(user_id, user['balance']), reply_markup=get_main_kb(l))
-    elif query.data == "btn:buy":
-        btns = []
-        for pk, d in PACKS.items():
-            btns.append([InlineKeyboardButton(f"⭐ {d['songs']} - {d['stars']} Stars", callback_data=f"buy:stars:{pk}")])
-            btns.append([InlineKeyboardButton(f"💳 {d['songs']} - €{d['eur']/100}", callback_data=f"buy:stripe:{pk}")])
-        btns.append([InlineKeyboardButton("⬅️ Back", callback_data="btn:home")])
-        await query.message.edit_text(gt(l, "buy"), reply_markup=InlineKeyboardMarkup(btns))
-    elif query.data == "btn:create":
-        if user['balance'] < 1:
-            await query.answer(gt(l, "no_balance"), show_alert=True)
-            return ST_MENU
-        await query.message.edit_text(gt(l, "mood"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(m, callback_data=f"mood:{m}")] for m in MOODS]))
-        return ST_MOOD
-    return ST_MENU
-
-async def mood_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['mood'] = update.callback_query.data.split(":")[1]
-    user_id = update.effective_user.id
-    with db_conn() as conn: user = conn.execute("SELECT lang FROM users WHERE user_id=%s", (user_id,)).fetchone()
-    await update.callback_query.message.edit_text(gt(user['lang'], "genre"), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(g, callback_data=f"genre:{g}")] for g in GENRES]))
-    return ST_GENRE
-
-async def genre_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['genre'] = update.callback_query.data.split(":")[1]
-    user_id = update.effective_user.id
-    with db_conn() as conn: user = conn.execute("SELECT lang FROM users WHERE user_id=%s", (user_id,)).fetchone()
-    await update.callback_query.message.edit_text(gt(user['lang'], "topic"))
-    return ST_TOPIC
-
-async def topic_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = update.message.text
-    user_id = update.effective_user.id
-    with db_conn() as conn: user = conn.execute("SELECT lang FROM users WHERE user_id=%s", (user_id,)).fetchone()
-    l = user['lang']
-    msg = await update.message.reply_text("⏳ AI is writing lyrics...")
+    pack = PACKS.get(pack_id)
+    if not pack:
+        raise ValueError("Invalid pack")
     
-    lyrics = await api_gen_lyrics(context.user_data['mood'], context.user_data['genre'], topic)
-    context.user_data['lyrics'] = lyrics
-    
-    await msg.edit_text(gt(l, "lyrics_ready").format(lyrics), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 Generate Music", callback_data="lyrics:go")],
-        [InlineKeyboardButton("⬅️ Cancel", callback_data="btn:home")]
-    ]))
-    return ST_EDIT_LYRICS
-
-async def final_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = update.effective_user.id
-    with db_conn() as conn:
-        user = conn.execute("SELECT * FROM users WHERE user_id=%s", (user_id,)).fetchone()
-        conn.execute("UPDATE users SET balance = balance - 1 WHERE user_id=%s", (user_id,))
-        conn.commit()
-    
-    await query.message.edit_text(gt(user['lang'], "wait_gen"))
-    
-    # Запуск в фоне, чтобы не блокировать бота
-    res = await api_gen_music(context.user_data['lyrics'], context.user_data['mood'], context.user_data['genre'])
-    # Здесь должен быть цикл проверки статуса (как в предыдущем блоке кода)
-    await query.message.reply_text("🎵 Task submitted! (Check status logic enabled)")
-    return ConversationHandler.END
-
-# =========================
-# MAIN
-# =========================
-def main():
-    check_instance()
-    init_db()
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            ST_LANG: [CallbackQueryHandler(select_lang, pattern="^lang:")],
-            ST_MENU: [CallbackQueryHandler(menu_callback, pattern="^btn:"), CallbackQueryHandler(start, pattern="^btn:home$")],
-            ST_MOOD: [CallbackQueryHandler(mood_step, pattern="^mood:")],
-            ST_GENRE: [CallbackQueryHandler(genre_step, pattern="^genre:")],
-            ST_TOPIC: [MessageHandler(filters.TEXT & ~filters.COMMAND, topic_step)],
-            ST_EDIT_LYRICS: [CallbackQueryHandler(final_gen, pattern="^lyrics:go$")],
-        },
-        fallbacks=[CommandHandler("start", start)]
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {"name": pack["label"]},
+                "unit_amount": int(pack["price"] * 100),
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        success_url=STRIPE_SUCCESS_URL,
+        cancel_url=STRIPE_CANCEL_URL,
+        metadata={"user_id": str(user_id), "pack": pack_id},
     )
-    
-    app.add_handler(PreCheckoutQueryHandler(lambda u,c: u.pre_checkout_query.answer(ok=True)))
-    app.add_handler(conv)
-    
-    print("MusicAI Bot Started...")
-    try: app.run_polling()
-    finally:
-        if os.path.exists(LOCK_FILE): os.remove(LOCK_FILE)
+    return session.url
 
-if __name__ == "__main__": main()
+# -------------------------
+# Telegram Handlers
+# -------------------------
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    text = tr(user_id, "welcome")
+    await update.message.reply_text(text, reply_markup=lang_keyboard())
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show language selection menu"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    text = tr(user_id, "choose_language")
+    await update.message.reply_text(text, reply_markup=lang_keyboard())
+
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        query = update.callback_query
+        if not query:
+            log.warning("Callback query is None")
+            return
+            
+        user_id = query.from_user.id
+        data = query.data
+        
+        log.info(f"Callback from user {user_id}: {data}")
+        
+        # Ensure user exists in database first
+        try:
+            await asyncio.to_thread(ensure_user, user_id)
+        except Exception as db_err:
+            log.error(f"Failed to ensure user {user_id} in database: {db_err}", exc_info=True)
+            await query.answer("❌ Database error. Please contact support.", show_alert=True)
+            return
+        
+        # Answer the callback query first
+        try:
+            await query.answer()
+        except Exception as e:
+            log.error(f"Failed to answer callback query: {e}")
+        
+        if data.startswith("lang:"):
+            lang = data.split(":")[1]
+            await asyncio.to_thread(set_lang, user_id, lang)
+            await query.edit_message_text(
+                tr(user_id, "language_set"),
+                reply_markup=menu_keyboard(lang)
+            )
+        
+        elif data == "buy":
+            user = await asyncio.to_thread(get_user, user_id)
+            balance = user.get("balance", 0)
+            text = f"{tr(user_id, 'buy')}\n{tr(user_id, 'balance').format(balance)}"
+            await query.edit_message_text(text, reply_markup=buy_keyboard(user.get("lang", "en"), user_id))
+        
+        elif data.startswith("buypack:"):
+            pack_id = data.split(":")[1]
+            try:
+                url = create_checkout_session(user_id, pack_id)
+                await query.edit_message_text(f"Click to complete payment:\n{url}")
+            except Exception as e:
+                log.error(f"Checkout session error: {e}")
+                await query.edit_message_text(tr(user_id, "error").format(str(e)))
+        
+        elif data == "balance":
+            user = await asyncio.to_thread(get_user, user_id)
+            balance = user.get("balance", 0)
+            lang = user.get("lang", "uk")
+            text = tr(user_id, "balance").format(balance)
+            await query.edit_message_text(text, reply_markup=menu_keyboard(lang))
+        
+        elif data == "help":
+            user = await asyncio.to_thread(get_user, user_id)
+            lang = user.get("lang", "uk")
+            help_text = """🎵 MusicAI PRO - Створюй унікальні пісні!
+
+Як використовувати:
+1️⃣ Оберіть мову інтерфейсу
+2️⃣ Оберіть жанр музики
+3️⃣ Оберіть настрій пісні
+4️⃣ Опишіть про що ваша пісня
+5️⃣ Я створю текст і музику!
+
+💎 Вартість: 1 пісня = 1 кредит
+💰 Купити пісні: /menu → Купити пісні
+
+Питання? Напишіть @support""" if lang == "uk" else """🎵 MusicAI PRO - Create unique songs!
+
+How to use:
+1️⃣ Choose interface language
+2️⃣ Select music genre
+3️⃣ Select song mood
+4️⃣ Describe what your song is about
+5️⃣ I'll create lyrics and music!
+
+💎 Cost: 1 song = 1 credit
+💰 Buy songs: /menu → Buy Songs
+
+Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Создавай уникальные песни!
+
+Как использовать:
+1️⃣ Выберите язык интерфейса
+2️⃣ Выберите жанр музыки
+3️⃣ Выберите настроение песни
+4️⃣ Опишите о чём ваша песня
+5️⃣ Я создам текст и музыку!
+
+💎 Стоимость: 1 песня = 1 кредит
+💰 Купить песни: /menu → Купить песни
+
+Вопросы? Напишите @support"""
+            await query.edit_message_text(help_text, reply_markup=menu_keyboard(lang))
+        
+        elif data.startswith("genre:"):
+            genre = data.split(":")[1]
+            context.user_data["genre"] = genre
+            await query.edit_message_text(f"Genre: {genre}\nNow choose mood:", reply_markup=moods_keyboard("en"))
+        
+        elif data.startswith("mood:"):
+            mood = data.split(":")[1]
+            context.user_data["mood"] = mood
+            await query.edit_message_text(f"Mood: {mood}\n\nNow tell me about your song!")
+        
+        elif data.startswith("generate:"):
+            # Generate music from lyrics
+            user_data = context.user_data
+            lyrics = user_data.get("lyrics", "")
+            genre = user_data.get("genre", "Pop")
+            mood = user_data.get("mood", "Happy")
+            
+            if not lyrics:
+                await query.edit_message_text(tr(user_id, "error").format("No lyrics found"))
+                return
+            
+            # Check balance
+            can_generate = await asyncio.to_thread(consume_song, user_id)
+            if not can_generate:
+                await query.edit_message_text(tr(user_id, "error").format("Insufficient balance"))
+                return
+            
+            await query.edit_message_text("🎶 ГЕНЕРАЦИЯ ПЕСНИ НАЧАЛАСЬ! ⚡️\nОбычно занимает не более 5 минут.\nЯ сообщу, как только будет готово 🎧")
+            
+            try:
+                result = await piapi_generate_music(lyrics, genre, mood, demo=False)
+                audio_urls = extract_audio_urls(result)
+                
+                if audio_urls:
+                    for url in audio_urls:
+                        await query.message.reply_audio(url)
+                    await query.message.reply_text(tr(user_id, "done"))
+                else:
+                    await query.message.reply_text(tr(user_id, "error").format("No audio generated"))
+            except Exception as e:
+                log.error(f"Music generation error: {e}")
+                await query.message.reply_text(tr(user_id, "error").format(str(e)))
+        else:
+            log.warning(f"Unknown callback data: {data}")
+            
+    except Exception as e:
+        error_msg = str(e)
+        log.error(f"Error in on_callback handler: {error_msg}", exc_info=True)
+        try:
+            if update and update.callback_query:
+                # Try to send a more helpful error message
+                if "DATABASE_URL" in error_msg or "psycopg" in error_msg:
+                    await update.callback_query.answer("❌ Database connection error. Please contact support.", show_alert=True)
+                elif "user" in error_msg.lower():
+                    await update.callback_query.answer("❌ User error. Try /start to reinitialize.", show_alert=True)
+                else:
+                    await update.callback_query.answer(f"❌ Error: {error_msg[:100]}", show_alert=True)
+        except Exception as reply_error:
+            log.error(f"Failed to send error message to user: {reply_error}")
+
+async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    user_data = context.user_data
+    
+    # If user has selected genre and mood, generate lyrics
+    if "genre" in user_data and "mood" in user_data:
+        await update.message.reply_text(tr(user_id, "generating"))
+        
+        try:
+            lyrics = await openrouter_lyrics(
+                text,
+                user_data.get("lang", "en"),
+                user_data["genre"],
+                user_data["mood"]
+            )
+            
+            context.user_data["lyrics"] = lyrics
+            
+            # Show lyrics with generate button
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎵 Сгенерировать песню", callback_data=f"generate:{user_id}")
+            ]])
+            
+            await update.message.reply_text(f"📝 Your lyrics:\n\n{lyrics}", reply_markup=kb)
+        except Exception as e:
+            log.error(f"Lyrics generation error: {e}")
+            await update.message.reply_text(tr(user_id, "error").format(str(e)))
+    else:
+        # Start the flow
+        await update.message.reply_text("Choose genre first:", reply_markup=genres_keyboard("en"))
+
+# -------------------------
+# FastAPI (Stripe webhook)
+# -------------------------
+app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup"""
+    await asyncio.to_thread(init_db)
+    log.info("DB ready")
+    
+    if not PIAPI_API_KEY:
+        log.warning("⚠️ PIAPI_API_KEY not set - music generation will not work")
+    if not OPENROUTER_API_KEY:
+        log.warning("⚠️ OPENROUTER_API_KEY not set - lyrics generation will not work")
+
+@app.get("/stripe/webhook")
+async def stripe_webhook_verification():
+    """GET endpoint for Stripe webhook verification during setup"""
+    return {"status": "ok", "message": "Stripe webhook endpoint is ready"}
+
+@app.get("/webhook/stripe")
+async def webhook_stripe_verification():
+    """GET endpoint for Stripe webhook verification at alternative path"""
+    return {"status": "ok", "message": "Stripe webhook endpoint is ready"}
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
+    """POST endpoint for Stripe webhook events"""
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="STRIPE_WEBHOOK_SECRET not set")
+
+    payload = await request.body()
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        meta = session.get("metadata") or {}
+        user_id = meta.get("user_id")
+        pack_id = meta.get("pack")
+
+        if user_id and pack_id in PACKS:
+            songs = int(PACKS[pack_id]["songs"])
+            await asyncio.to_thread(add_balance, int(user_id), songs)
+            log.info(f"Added {songs} songs to user {user_id}")
+            
+            # Notify user about successful payment
+            if telegram_app and telegram_app.bot:
+                try:
+                    balance = await asyncio.to_thread(get_balance, int(user_id))
+                    msg = tr(int(user_id), "payment_success").format(songs=songs, balance=balance)
+                    await telegram_app.bot.send_message(chat_id=int(user_id), text=msg)
+                except Exception as e:
+                    log.error(f"Failed to notify user {user_id}: {e}")
+
+    return {"ok": True}
+
+@app.post("/webhook/stripe")
+async def webhook_stripe(request: Request, stripe_signature: str = Header(None)):
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="STRIPE_WEBHOOK_SECRET not set")
+
+    payload = await request.body()
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        meta = session.get("metadata") or {}
+        user_id = meta.get("user_id")
+        pack_id = meta.get("pack")
+
+        if user_id and pack_id in PACKS:
+            songs = int(PACKS[pack_id]["songs"])
+            await asyncio.to_thread(add_balance, int(user_id), songs)
+            log.info(f"Added {songs} songs to user {user_id}")
+            
+            # Notify user about successful payment
+            if telegram_app and telegram_app.bot:
+                try:
+                    balance = await asyncio.to_thread(get_balance, int(user_id))
+                    msg = tr(int(user_id), "payment_success").format(songs=songs, balance=balance)
+                    await telegram_app.bot.send_message(chat_id=int(user_id), text=msg)
+                except Exception as e:
+                    log.error(f"Failed to notify user {user_id}: {e}")
+
+    return {"ok": True}
+
+# -------------------------
+# Run Telegram bot inside same process
+# -------------------------
+telegram_app: Optional[Application] = None
+
+@app.on_event("startup")
+async def start_telegram_bot():
+    global telegram_app
+    if not BOT_TOKEN:
+        log.warning("BOT_TOKEN not set — telegram bot will not start")
+        return
+
+    telegram_app = Application.builder().token(BOT_TOKEN).build()
+
+    telegram_app.add_handler(CommandHandler("start", cmd_start))
+    telegram_app.add_handler(CommandHandler("menu", cmd_menu))
+    telegram_app.add_handler(CallbackQueryHandler(on_callback))
+    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+
+    # Start polling as background task
+    async def _run():
+        await telegram_app.initialize()
+        await telegram_app.start()
+        await telegram_app.updater.start_polling(drop_pending_updates=True)
+        log.info("Telegram bot started (polling)")
+
+    asyncio.create_task(_run())
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "bot": "MusicAI PRO"}
+
+# -------------------------
+# Main entry point
+# -------------------------
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
