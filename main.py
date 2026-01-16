@@ -198,13 +198,26 @@ async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -
     """Generate song lyrics using OpenRouter"""
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
+    
+    # Map language codes to full language names
+    lang_names = {
+        "uk": "Ukrainian",
+        "en": "English", 
+        "ru": "Russian",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German",
+        "pl": "Polish"
+    }
+    lang_name = lang_names.get(lang_code, "English")
 
-    prompt = f"""Create song lyrics in {lang_code} language.
+    prompt = f"""Create song lyrics in {lang_name} language.
 Topic: {topic}
 Genre: {genre}
 Mood: {mood}
 
 IMPORTANT: Write lyrics with proper rhyme scheme. Each verse should have rhyming lines.
+IMPORTANT: Write the lyrics in {lang_name} language ONLY, not in English.
 Format: 
 [Verse 1]
 ...lyrics with rhymes...
@@ -388,6 +401,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data.startswith("lang:"):
             lang = data.split(":")[1]
             await asyncio.to_thread(set_lang, user_id, lang)
+            # Store language in context for later use
+            context.user_data["lang"] = lang
             # Go directly to genre selection for song creation
             await query.edit_message_text(
                 "🎵 Great! Now choose a genre for your song:",
@@ -529,9 +544,16 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(tr(user_id, "generating"))
         
         try:
+            # Get language from context or database
+            lang = user_data.get("lang")
+            if not lang:
+                user = await asyncio.to_thread(get_user, user_id)
+                lang = user.get("lang", "en")
+                user_data["lang"] = lang  # Store for future use
+            
             lyrics = await openrouter_lyrics(
                 text,
-                user_data.get("lang", "en"),
+                lang,
                 user_data["genre"],
                 user_data["mood"]
             )
