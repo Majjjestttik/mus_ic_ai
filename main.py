@@ -440,6 +440,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if update and update.callback_query:
                 await update.callback_query.message.reply_text("❌ An error occurred. Please try again.")
+        except Exception as reply_error:
+            log.error(f"Failed to send error message to user: {reply_error}")
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
