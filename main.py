@@ -71,6 +71,11 @@ TRANSLATIONS = {
         "welcome": "🎵 Ласкаво просимо до MusicAI PRO!\nЯ допоможу створити персональну пісню.",
         "choose_language": "Оберіть мову:",
         "language_set": "Мову встановлено: Українська 🇺🇦",
+        "choose_genre": "Оберіть жанр для вашої пісні:",
+        "choose_mood": "Оберіть настрій пісні:",
+        "describe_song": "Тепер розкажіть про що ваша пісня!",
+        "generate_music_button": "🎵 Згенерувати пісню",
+        "your_lyrics": "📝 Ваш текст:",
         "menu": "📋 Головне меню",
         "buy": "💎 Купити пісні",
         "balance": "Баланс: {} пісень",
@@ -83,6 +88,11 @@ TRANSLATIONS = {
         "welcome": "🎵 Welcome to MusicAI PRO!\nI'll help you create personalized songs.",
         "choose_language": "Choose your language:",
         "language_set": "Language set to English 🇬🇧",
+        "choose_genre": "Choose a genre for your song:",
+        "choose_mood": "Choose the mood of your song:",
+        "describe_song": "Now tell me what your song is about!",
+        "generate_music_button": "🎵 Generate Song",
+        "your_lyrics": "📝 Your lyrics:",
         "menu": "📋 Main Menu",
         "buy": "💎 Buy Songs",
         "balance": "Balance: {} songs",
@@ -95,6 +105,11 @@ TRANSLATIONS = {
         "welcome": "🎵 Добро пожаловать в MusicAI PRO!\nЯ помогу создать персональную песню.",
         "choose_language": "Выберите язык:",
         "language_set": "Язык установлен: Русский 🇷🇺",
+        "choose_genre": "Выберите жанр для вашей песни:",
+        "choose_mood": "Выберите настроение песни:",
+        "describe_song": "Теперь расскажите о чём ваша песня!",
+        "generate_music_button": "🎵 Сгенерировать песню",
+        "your_lyrics": "📝 Ваш текст:",
         "menu": "📋 Главное меню",
         "buy": "💎 Купить песни",
         "balance": "Баланс: {} песен",
@@ -107,6 +122,11 @@ TRANSLATIONS = {
         "welcome": "🎵 Witamy w MusicAI PRO!\nPomogę Ci stworzyć spersonalizowaną piosenkę.",
         "choose_language": "Wybierz język:",
         "language_set": "Język ustawiony: Polski 🇵🇱",
+        "choose_genre": "Wybierz gatunek dla twojej piosenki:",
+        "choose_mood": "Wybierz nastrój piosenki:",
+        "describe_song": "Teraz powiedz mi o czym jest twoja piosenka!",
+        "generate_music_button": "🎵 Generuj piosenkę",
+        "your_lyrics": "📝 Twój tekst:",
         "menu": "📋 Menu główne",
         "buy": "💎 Kup piosenki",
         "balance": "Saldo: {} piosenek",
@@ -114,6 +134,57 @@ TRANSLATIONS = {
         "done": "✅ Gotowe!",
         "error": "❌ Błąd: {}",
         "payment_success": "✅ Płatność zakończona sukcesem!\n\n💎 +{songs} piosenek dodano do twojego salda.\n🎵 Twoje saldo: {balance} piosenek\n\nTeraz możesz tworzyć spersonalizowane piosenki!",
+    },
+    "es": {
+        "welcome": "🎵 ¡Bienvenido a MusicAI PRO!\nTe ayudaré a crear canciones personalizadas.",
+        "choose_language": "Elige tu idioma:",
+        "language_set": "Idioma establecido: Español 🇪🇸",
+        "choose_genre": "Elige un género para tu canción:",
+        "choose_mood": "Elige el estado de ánimo de tu canción:",
+        "describe_song": "¡Ahora cuéntame de qué trata tu canción!",
+        "generate_music_button": "🎵 Generar canción",
+        "your_lyrics": "📝 Tu letra:",
+        "menu": "📋 Menú principal",
+        "buy": "💎 Comprar canciones",
+        "balance": "Saldo: {} canciones",
+        "generating": "🎶 Generando tu canción...",
+        "done": "✅ ¡Listo!",
+        "error": "❌ Error: {}",
+        "payment_success": "✅ ¡Pago exitoso!\n\n💎 +{songs} canciones agregadas a tu saldo.\n🎵 Tu saldo: {balance} canciones\n\n¡Ahora puedes crear tus canciones personalizadas!",
+    },
+    "fr": {
+        "welcome": "🎵 Bienvenue sur MusicAI PRO!\nJe vais vous aider à créer des chansons personnalisées.",
+        "choose_language": "Choisissez votre langue:",
+        "language_set": "Langue définie: Français 🇫🇷",
+        "choose_genre": "Choisissez un genre pour votre chanson:",
+        "choose_mood": "Choisissez l'ambiance de votre chanson:",
+        "describe_song": "Maintenant, dites-moi de quoi parle votre chanson!",
+        "generate_music_button": "🎵 Générer la chanson",
+        "your_lyrics": "📝 Vos paroles:",
+        "menu": "📋 Menu principal",
+        "buy": "💎 Acheter des chansons",
+        "balance": "Solde: {} chansons",
+        "generating": "🎶 Génération de votre chanson...",
+        "done": "✅ Terminé!",
+        "error": "❌ Erreur: {}",
+        "payment_success": "✅ Paiement réussi!\n\n💎 +{songs} chansons ajoutées à votre solde.\n🎵 Votre solde: {balance} chansons\n\nVous pouvez maintenant créer vos chansons personnalisées!",
+    },
+    "de": {
+        "welcome": "🎵 Willkommen bei MusicAI PRO!\nIch helfe dir, personalisierte Songs zu erstellen.",
+        "choose_language": "Wählen Sie Ihre Sprache:",
+        "language_set": "Sprache eingestellt: Deutsch 🇩🇪",
+        "choose_genre": "Wählen Sie ein Genre für Ihr Lied:",
+        "choose_mood": "Wählen Sie die Stimmung Ihres Liedes:",
+        "describe_song": "Jetzt erzähl mir, worum es in deinem Lied geht!",
+        "generate_music_button": "🎵 Lied generieren",
+        "your_lyrics": "📝 Deine Texte:",
+        "menu": "📋 Hauptmenü",
+        "buy": "💎 Lieder kaufen",
+        "balance": "Guthaben: {} Lieder",
+        "generating": "🎶 Generiere dein Lied...",
+        "done": "✅ Fertig!",
+        "error": "❌ Fehler: {}",
+        "payment_success": "✅ Zahlung erfolgreich!\n\n💎 +{songs} Lieder zu Ihrem Guthaben hinzugefügt.\n🎵 Ihr Guthaben: {balance} Lieder\n\nSie können jetzt Ihre personalisierten Lieder erstellen!",
     },
 }
 
@@ -171,6 +242,11 @@ def add_balance(user_id: int, songs: int):
     with db_conn() as conn:
         conn.execute("UPDATE users SET balance=balance+%s WHERE user_id=%s", (songs, user_id))
         conn.commit()
+
+def get_balance(user_id: int) -> int:
+    """Get user's current balance"""
+    user = get_user(user_id)
+    return user.get("balance", 0)
 
 def consume_song(user_id: int) -> bool:
     ensure_user(user_id)
@@ -380,9 +456,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data.startswith("lang:"):
             lang = data.split(":")[1]
             await asyncio.to_thread(set_lang, user_id, lang)
+            # After language selection, immediately go to genre selection for song creation
             await query.edit_message_text(
-                tr(user_id, "language_set"),
-                reply_markup=menu_keyboard(lang)
+                tr(user_id, "choose_genre"),
+                reply_markup=genres_keyboard(lang)
             )
         
         elif data == "buy":
@@ -452,12 +529,20 @@ Questions? Contact @support""" if lang == "en" else """🎵 MusicAI PRO - Соз
         elif data.startswith("genre:"):
             genre = data.split(":")[1]
             context.user_data["genre"] = genre
-            await query.edit_message_text(f"Genre: {genre}\nNow choose mood:", reply_markup=moods_keyboard("en"))
+            user = await asyncio.to_thread(get_user, user_id)
+            lang = user.get("lang", "en")
+            context.user_data["lang"] = lang
+            await query.edit_message_text(
+                f"🎸 {genre}\n\n{tr(user_id, 'choose_mood')}",
+                reply_markup=moods_keyboard(lang)
+            )
         
         elif data.startswith("mood:"):
             mood = data.split(":")[1]
             context.user_data["mood"] = mood
-            await query.edit_message_text(f"Mood: {mood}\n\nNow tell me about your song!")
+            await query.edit_message_text(
+                f"💫 {mood}\n\n{tr(user_id, 'describe_song')}"
+            )
         
         elif data.startswith("generate:"):
             # Generate music from lyrics
@@ -531,10 +616,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Show lyrics with generate button
             kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("🎵 Сгенерировать песню", callback_data=f"generate:{user_id}")
+                InlineKeyboardButton(tr(user_id, "generate_music_button"), callback_data=f"generate:{user_id}")
             ]])
             
-            await update.message.reply_text(f"📝 Your lyrics:\n\n{lyrics}", reply_markup=kb)
+            await update.message.reply_text(f"{tr(user_id, 'your_lyrics')}\n\n{lyrics}", reply_markup=kb)
         except Exception as e:
             log.error(f"Lyrics generation error: {e}")
             await update.message.reply_text(tr(user_id, "error").format(str(e)))
