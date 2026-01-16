@@ -38,8 +38,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 PIAPI_API_KEY = os.getenv("PIAPI_API_KEY", "").strip()
-PIAPI_BASE_URL = os.getenv("PIAPI_BASE_URL", "").strip().rstrip("/")
-PIAPI_GENERATE_PATH = os.getenv("PIAPI_GENERATE_PATH", "/suno/music").strip()
+PIAPI_BASE_URL = os.getenv("PIAPI_BASE_URL", "https://api.piapi.ai").strip().rstrip("/")
+PIAPI_GENERATE_PATH = os.getenv("PIAPI_GENERATE_PATH", "/api/v1/task").strip()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
@@ -263,39 +263,81 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
     if not PIAPI_BASE_URL:
         raise RuntimeError("PIAPI_BASE_URL not set. Please configure the PIAPI server URL in environment variables.")
     
+    # Check if PIAPI_BASE_URL looks like a placeholder
+    if "your-piapi-server.com" in PIAPI_BASE_URL or "example.com" in PIAPI_BASE_URL:
+        raise RuntimeError(f"PIAPI_BASE_URL is set to a placeholder value '{PIAPI_BASE_URL}'. Please set it to your actual PIAPI server URL.")
+    
     url = f"{PIAPI_BASE_URL}{PIAPI_GENERATE_PATH}"
     log.info(f"Calling PIAPI at: {url}")
     
+    # PIAPI uses a different format - task-based API
     payload = {
-        "lyrics": lyrics,
-        "tags": f"{genre}, {mood}",
-        "title": f"{genre} song",
-        "make_instrumental": False,
+        "model": "suno",
+        "task_type": "music",
+        "input": {
+            "prompt": lyrics,
+            "tags": f"{genre}, {mood}",
+            "title": f"{genre} song",
+            "make_instrumental": False,
+        }
     }
     
+    # PIAPI uses X-API-Key header, not Authorization Bearer
     headers = {
-        "Authorization": f"Bearer {PIAPI_API_KEY}",
+        "X-API-Key": PIAPI_API_KEY,
         "Content-Type": "application/json",
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers=headers) as resp:
-            if resp.status != 200:
-                text = await resp.text()
-                error_msg = f"PIAPI error {resp.status}: {text if text else '(empty response)'}"
-                log.error(f"{error_msg}. URL: {url}")
-                if resp.status == 404:
-                    raise RuntimeError(f"PIAPI endpoint not found (404). Please check PIAPI_BASE_URL={PIAPI_BASE_URL} and PIAPI_GENERATE_PATH={PIAPI_GENERATE_PATH}")
-                raise RuntimeError(error_msg)
-            return await resp.json()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    error_msg = f"PIAPI error {resp.status}: {text if text else '(empty response)'}"
+                    log.error(f"{error_msg}. URL: {url}")
+                    if resp.status == 404:
+                        raise RuntimeError(f"PIAPI endpoint not found (404). Please check PIAPI_BASE_URL={PIAPI_BASE_URL} and PIAPI_GENERATE_PATH={PIAPI_GENERATE_PATH}")
+                    raise RuntimeError(error_msg)
+                return await resp.json()
+    except aiohttp.ClientError as e:
+        error_msg = f"Cannot connect to PIAPI server at {PIAPI_BASE_URL}. Error: {str(e)}"
+        log.error(error_msg)
+        raise RuntimeError(f"Connection failed: {str(e)}. Please check that PIAPI_BASE_URL is set to a valid server URL.")
 
 def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
-    """Extract audio URLs from PIAPI response"""
+    """Extract audio URLs from PIAPI response
+    
+    Note: PIAPI returns a task_id initially. The full implementation would need to:
+    1. Get the task_id from the initial response
+    2. Poll GET /api/v1/task/{task_id} until status is 'completed'
+    3. Extract audio URLs from the completed task response
+    
+    For now, this attempts to extract URLs from the response if available.
+    """
     urls = []
+    
+    # Check for data in response
     if "data" in piapi_resp:
-        for item in piapi_resp["data"]:
-            if "audio_url" in item:
-                urls.append(item["audio_url"])
+        data = piapi_resp["data"]
+        
+        # If data is a dict with task results
+        if isinstance(data, dict):
+            # Check for output or clips in the response
+            if "output" in data and isinstance(data["output"], list):
+                for item in data["output"]:
+                    if isinstance(item, dict) and "audio_url" in item:
+                        urls.append(item["audio_url"])
+            elif "clips" in data and isinstance(data["clips"], list):
+                for clip in data["clips"]:
+                    if isinstance(clip, dict) and "audio_url" in clip:
+                        urls.append(clip["audio_url"])
+        
+        # If data is a list
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and "audio_url" in item:
+                    urls.append(item["audio_url"])
+    
     return urls
 
 # -------------------------
@@ -593,6 +635,8 @@ async def startup_event():
         log.warning("⚠️ PIAPI_API_KEY not set - music generation will not work")
     if not PIAPI_BASE_URL:
         log.warning("⚠️ PIAPI_BASE_URL not set - music generation will not work. Please set PIAPI_BASE_URL environment variable.")
+    elif "your-piapi-server.com" in PIAPI_BASE_URL or "example.com" in PIAPI_BASE_URL:
+        log.warning(f"⚠️ PIAPI_BASE_URL is set to placeholder value '{PIAPI_BASE_URL}' - please set it to your actual PIAPI server URL")
     if not OPENROUTER_API_KEY:
         log.warning("⚠️ OPENROUTER_API_KEY not set - lyrics generation will not work")
 
