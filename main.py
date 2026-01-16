@@ -172,6 +172,11 @@ def add_balance(user_id: int, songs: int):
         conn.execute("UPDATE users SET balance=balance+%s WHERE user_id=%s", (songs, user_id))
         conn.commit()
 
+def get_balance(user_id: int) -> int:
+    """Get user's current balance"""
+    user = get_user(user_id)
+    return user.get("balance", 0)
+
 def consume_song(user_id: int) -> bool:
     ensure_user(user_id)
     with db_conn() as conn:
