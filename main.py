@@ -203,6 +203,108 @@ Jak używać:
 Pytania? Skontaktuj się @support""",
         "choose_genre_first": "Najpierw wybierz gatunek:",
     },
+    "es": {
+        "welcome": "🎵 ¡Bienvenido a MusicAI PRO!\nTe ayudaré a crear canciones personalizadas.",
+        "choose_language": "Elige tu idioma:",
+        "language_set": "Idioma configurado: Español 🇪🇸",
+        "choose_genre": "🎵 ¡Genial! Ahora elige un género para tu canción:",
+        "choose_mood": "Género: {}\n\n🎭 Ahora elige el estado de ánimo de tu canción:",
+        "describe_song": "Estado de ánimo: {}\n\n✍️ ¡Ahora cuéntame de qué trata tu canción!",
+        "menu": "📋 Menú principal",
+        "buy": "💎 Comprar canciones",
+        "balance": "Saldo: {} canciones",
+        "generating": "🎶 Generando tu canción...",
+        "generating_music": "🎶 ¡GENERACIÓN DE MÚSICA INICIADA! ⚡️\nNormalmente tarda no más de 5 minutos.\nTe avisaré cuando esté lista 🎧",
+        "done": "✅ ¡Listo!",
+        "error": "❌ Error: {}",
+        "no_lyrics": "No se encontraron letras",
+        "no_balance": "Saldo insuficiente",
+        "no_audio": "No se generó audio",
+        "payment_success": "✅ ¡Pago exitoso!\n\n💎 +{songs} canciones añadidas a tu saldo.\n🎵 Tu saldo: {balance} canciones\n\n¡Ahora puedes crear tus canciones personalizadas!",
+        "help": """🎵 MusicAI PRO - ¡Crea canciones únicas!
+
+Cómo usar:
+1️⃣ Elige el idioma de la interfaz
+2️⃣ Selecciona el género musical
+3️⃣ Selecciona el estado de ánimo de la canción
+4️⃣ Describe de qué trata tu canción
+5️⃣ ¡Crearé la letra y la música!
+
+💎 Costo: 1 canción = 1 crédito
+💰 Comprar canciones: /menu → Comprar canciones
+🌍 Cambiar idioma: /language
+
+¿Preguntas? Contacta @support""",
+        "choose_genre_first": "Primero elige un género:",
+    },
+    "fr": {
+        "welcome": "🎵 Bienvenue sur MusicAI PRO!\nJe vais vous aider à créer des chansons personnalisées.",
+        "choose_language": "Choisissez votre langue:",
+        "language_set": "Langue définie: Français 🇫🇷",
+        "choose_genre": "🎵 Super! Maintenant choisissez un genre pour votre chanson:",
+        "choose_mood": "Genre: {}\n\n🎭 Maintenant choisissez l'ambiance de votre chanson:",
+        "describe_song": "Ambiance: {}\n\n✍️ Maintenant dites-moi de quoi parle votre chanson!",
+        "menu": "📋 Menu principal",
+        "buy": "💎 Acheter des chansons",
+        "balance": "Solde: {} chansons",
+        "generating": "🎶 Génération de votre chanson...",
+        "generating_music": "🎶 GÉNÉRATION DE MUSIQUE DÉMARRÉE! ⚡️\nPrend généralement pas plus de 5 minutes.\nJe vous préviendrai quand c'est prêt 🎧",
+        "done": "✅ Terminé!",
+        "error": "❌ Erreur: {}",
+        "no_lyrics": "Aucune parole trouvée",
+        "no_balance": "Solde insuffisant",
+        "no_audio": "Aucun audio généré",
+        "payment_success": "✅ Paiement réussi!\n\n💎 +{songs} chansons ajoutées à votre solde.\n🎵 Votre solde: {balance} chansons\n\nVous pouvez maintenant créer vos chansons personnalisées!",
+        "help": """🎵 MusicAI PRO - Créez des chansons uniques!
+
+Comment utiliser:
+1️⃣ Choisissez la langue de l'interface
+2️⃣ Sélectionnez le genre musical
+3️⃣ Sélectionnez l'ambiance de la chanson
+4️⃣ Décrivez le sujet de votre chanson
+5️⃣ Je créerai les paroles et la musique!
+
+💎 Coût: 1 chanson = 1 crédit
+💰 Acheter des chansons: /menu → Acheter des chansons
+🌍 Changer de langue: /language
+
+Questions? Contactez @support""",
+        "choose_genre_first": "Choisissez d'abord un genre:",
+    },
+    "de": {
+        "welcome": "🎵 Willkommen bei MusicAI PRO!\nIch helfe dir, personalisierte Songs zu erstellen.",
+        "choose_language": "Wähle deine Sprache:",
+        "language_set": "Sprache eingestellt: Deutsch 🇩🇪",
+        "choose_genre": "🎵 Großartig! Wähle jetzt ein Genre für deinen Song:",
+        "choose_mood": "Genre: {}\n\n🎭 Wähle jetzt die Stimmung deines Songs:",
+        "describe_song": "Stimmung: {}\n\n✍️ Erzähl mir jetzt, worum es in deinem Song geht!",
+        "menu": "📋 Hauptmenü",
+        "buy": "💎 Songs kaufen",
+        "balance": "Guthaben: {} Songs",
+        "generating": "🎶 Generiere deinen Song...",
+        "generating_music": "🎶 MUSIKGENERIERUNG GESTARTET! ⚡️\nDauert normalerweise nicht länger als 5 Minuten.\nIch benachrichtige dich, wenn er fertig ist 🎧",
+        "done": "✅ Fertig!",
+        "error": "❌ Fehler: {}",
+        "no_lyrics": "Keine Texte gefunden",
+        "no_balance": "Unzureichendes Guthaben",
+        "no_audio": "Kein Audio generiert",
+        "payment_success": "✅ Zahlung erfolgreich!\n\n💎 +{songs} Songs zu deinem Guthaben hinzugefügt.\n🎵 Dein Guthaben: {balance} Songs\n\nDu kannst jetzt deine personalisierten Songs erstellen!",
+        "help": """🎵 MusicAI PRO - Erstelle einzigartige Songs!
+
+Wie zu verwenden:
+1️⃣ Wähle die Schnittstellensprache
+2️⃣ Wähle das Musikgenre
+3️⃣ Wähle die Stimmung des Songs
+4️⃣ Beschreibe, worum es in deinem Song geht
+5️⃣ Ich erstelle den Text und die Musik!
+
+💎 Kosten: 1 Song = 1 Kredit
+💰 Songs kaufen: /menu → Songs kaufen
+🌍 Sprache ändern: /language
+
+Fragen? Kontaktiere @support""",
+        "choose_genre_first": "Wähle zuerst ein Genre:",
+    },
 }
 
 LANGS = ["uk", "en", "ru", "es", "fr", "de", "pl"]
