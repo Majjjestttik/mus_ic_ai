@@ -182,6 +182,13 @@ def consume_song(user_id: int) -> bool:
         conn.commit()
         return True
 
+def get_balance(user_id: int) -> int:
+    """Get user's current balance"""
+    ensure_user(user_id)
+    with db_conn() as conn:
+        row = conn.execute("SELECT balance FROM users WHERE user_id=%s", (user_id,)).fetchone()
+        return row["balance"] if row else 0
+
 # -------------------------
 # Helpers
 # -------------------------
@@ -571,42 +578,6 @@ async def webhook_stripe_verification():
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
     """POST endpoint for Stripe webhook events"""
-    if not STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(status_code=500, detail="STRIPE_WEBHOOK_SECRET not set")
-
-    payload = await request.body()
-    if not stripe_signature:
-        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
-
-    try:
-        event = stripe.Webhook.construct_event(payload, stripe_signature, STRIPE_WEBHOOK_SECRET)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
-
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        meta = session.get("metadata") or {}
-        user_id = meta.get("user_id")
-        pack_id = meta.get("pack")
-
-        if user_id and pack_id in PACKS:
-            songs = int(PACKS[pack_id]["songs"])
-            await asyncio.to_thread(add_balance, int(user_id), songs)
-            log.info(f"Added {songs} songs to user {user_id}")
-            
-            # Notify user about successful payment
-            if telegram_app and telegram_app.bot:
-                try:
-                    balance = await asyncio.to_thread(get_balance, int(user_id))
-                    msg = tr(int(user_id), "payment_success").format(songs=songs, balance=balance)
-                    await telegram_app.bot.send_message(chat_id=int(user_id), text=msg)
-                except Exception as e:
-                    log.error(f"Failed to notify user {user_id}: {e}")
-
-    return {"ok": True}
-
-@app.post("/webhook/stripe")
-async def webhook_stripe(request: Request, stripe_signature: str = Header(None)):
     if not STRIPE_WEBHOOK_SECRET:
         raise HTTPException(status_code=500, detail="STRIPE_WEBHOOK_SECRET not set")
 
