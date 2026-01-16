@@ -380,19 +380,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data.startswith("genre:"):
         genre = data.split(":")[1]
-        context.user_data[user_id] = {"genre": genre}
+        context.user_data["genre"] = genre
         await query.edit_message_text(f"Genre: {genre}\nNow choose mood:", reply_markup=moods_keyboard("en"))
     
     elif data.startswith("mood:"):
         mood = data.split(":")[1]
-        user_data = context.user_data.get(user_id, {})
-        user_data["mood"] = mood
-        context.user_data[user_id] = user_data
+        context.user_data["mood"] = mood
         await query.edit_message_text(f"Mood: {mood}\n\nNow tell me about your song!")
     
     elif data.startswith("generate:"):
         # Generate music from lyrics
-        user_data = context.user_data.get(user_id, {})
+        user_data = context.user_data
         lyrics = user_data.get("lyrics", "")
         genre = user_data.get("genre", "Pop")
         mood = user_data.get("mood", "Happy")
@@ -427,7 +425,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
     
-    user_data = context.user_data.get(user_id, {})
+    user_data = context.user_data
     
     # If user has selected genre and mood, generate lyrics
     if "genre" in user_data and "mood" in user_data:
@@ -441,8 +439,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_data["mood"]
             )
             
-            user_data["lyrics"] = lyrics
-            context.user_data[user_id] = user_data
+            context.user_data["lyrics"] = lyrics
             
             # Show lyrics with generate button
             kb = InlineKeyboardMarkup([[
