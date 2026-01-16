@@ -558,6 +558,11 @@ async def startup_event():
     if not OPENROUTER_API_KEY:
         log.warning("⚠️ OPENROUTER_API_KEY not set - lyrics generation will not work")
 
+@app.get("/stripe/webhook")
+async def stripe_webhook_verification():
+    """GET endpoint for Stripe webhook verification during setup"""
+    return {"status": "ok", "message": "Stripe webhook endpoint is ready"}
+
 @app.post("/stripe/webhook")
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
     if not STRIPE_WEBHOOK_SECRET:
