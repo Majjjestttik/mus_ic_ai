@@ -285,7 +285,7 @@ def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
 def lang_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for lang in LANGS:
-        flag = {"uk": "🇺🇦", "en": "🇬🇧", "ru": "🇷🇺", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪", "it": "🇮🇹", "pt": "🇵🇹"}.get(lang, "🌍")
+        flag = {"uk": "🇺🇦", "en": "🇬🇧", "ru": "🇷🇺", "pl": "🇵🇱"}.get(lang, "🌍")
         buttons.append([InlineKeyboardButton(f"{flag} {lang.upper()}", callback_data=f"lang:{lang}")])
     return InlineKeyboardMarkup(buttons)
 
