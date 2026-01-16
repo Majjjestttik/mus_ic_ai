@@ -242,7 +242,11 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
     if not PIAPI_API_KEY:
         raise RuntimeError("PIAPI_API_KEY not set")
     
+    if not PIAPI_BASE_URL:
+        raise RuntimeError("PIAPI_BASE_URL not set. Please configure the PIAPI server URL in environment variables.")
+    
     url = f"{PIAPI_BASE_URL}{PIAPI_GENERATE_PATH}"
+    log.info(f"Calling PIAPI at: {url}")
     
     payload = {
         "lyrics": lyrics,
@@ -260,7 +264,11 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
         async with session.post(url, json=payload, headers=headers) as resp:
             if resp.status != 200:
                 text = await resp.text()
-                raise RuntimeError(f"PIAPI error {resp.status}: {text}")
+                error_msg = f"PIAPI error {resp.status}: {text if text else '(empty response)'}"
+                log.error(f"{error_msg}. URL: {url}")
+                if resp.status == 404:
+                    raise RuntimeError(f"PIAPI endpoint not found (404). Please check PIAPI_BASE_URL={PIAPI_BASE_URL} and PIAPI_GENERATE_PATH={PIAPI_GENERATE_PATH}")
+                raise RuntimeError(error_msg)
             return await resp.json()
 
 def extract_audio_urls(piapi_resp: Dict[str, Any]) -> list:
@@ -556,6 +564,8 @@ async def startup_event():
     
     if not PIAPI_API_KEY:
         log.warning("⚠️ PIAPI_API_KEY not set - music generation will not work")
+    if not PIAPI_BASE_URL:
+        log.warning("⚠️ PIAPI_BASE_URL not set - music generation will not work. Please set PIAPI_BASE_URL environment variable.")
     if not OPENROUTER_API_KEY:
         log.warning("⚠️ OPENROUTER_API_KEY not set - lyrics generation will not work")
 
