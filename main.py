@@ -1163,6 +1163,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Generate each version
                 generated_count = 0
+                last_error = None
                 for idx, gender_version in enumerate(generate_versions):
                     try:
                         gender_label = gender_version if gender_version else "default"
@@ -1170,6 +1171,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         
                         # Step 1: Create music generation task
                         result = await piapi_generate_music(lyrics, genre, mood, demo=False, gender=gender_version)
+                        log.info(f"PIAPI generate response: {result}")
                         
                         # Extract task_id from response
                         task_id = None
@@ -1177,16 +1179,20 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             task_id = result["data"].get("task_id")
                         
                         if not task_id:
-                            log.error(f"No task_id in PIAPI response: {result}")
+                            error_msg = f"No task_id in PIAPI response: {result}"
+                            log.error(error_msg)
+                            last_error = error_msg
                             continue
                         
                         log.info(f"Music generation task created: {task_id} ({gender_label} vocals)")
                         
                         # Step 2: Poll for task completion (this may take 1-5 minutes)
                         completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
+                        log.info(f"Polling completed. Result: {completed_result}")
                         
                         # Step 3: Extract audio URLs from completed task
                         audio_urls = extract_audio_urls(completed_result)
+                        log.info(f"Extracted audio URLs: {audio_urls}")
                         
                         if audio_urls:
                             for url in audio_urls:
@@ -1200,10 +1206,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 await query.message.reply_audio(url, caption=caption)
                                 generated_count += 1
                         else:
-                            log.warning(f"No audio URLs for {gender_label} version")
+                            error_msg = f"No audio URLs extracted for {gender_label} version. Response: {completed_result}"
+                            log.warning(error_msg)
+                            last_error = error_msg
                     
                     except Exception as e:
-                        log.error(f"Error generating {gender_version if gender_version else 'default'} version: {e}")
+                        error_msg = f"Error generating {gender_version if gender_version else 'default'} version: {e}"
+                        log.error(error_msg, exc_info=True)
+                        last_error = str(e)
                         # Continue with next version instead of failing completely
                         continue
                 
@@ -1211,7 +1221,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if generated_count > 0:
                     await query.message.reply_text(tr(user_id, "done"))
                 else:
-                    await query.message.reply_text(tr(user_id, "error").format(tr(user_id, "no_audio")))
+                    # Provide more specific error message if we have one
+                    if last_error:
+                        error_text = f"{tr(user_id, 'no_audio')}\n\nDetails: {last_error}"
+                    else:
+                        error_text = tr(user_id, "no_audio")
+                    await query.message.reply_text(tr(user_id, "error").format(error_text))
                     
             except Exception as e:
                 log.error(f"Music generation error: {e}")
