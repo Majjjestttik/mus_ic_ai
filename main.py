@@ -426,21 +426,22 @@ async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
-    # Step 1: Generate initial lyrics focused on SIMPLE, EMOTIONAL POP STYLE
-    system_prompt_step1 = """You are a songwriter for emotional, simple, melodic songs.
+    # Step 1: Generate initial lyrics - SONG, NOT POEM
+    system_prompt_step1 = """Write a SONG, not a poem.
 
 Rules:
-- Write like a real pop song, not poetry
-- Use simple, conversational language
-- Focus on people, relationships, and emotions
-- Avoid complex metaphors
-- Verses and chorus must rhyme clearly
-- Chorus must be catchy and repeatable
-- Lyrics should sound good when sung
+- Use simple, spoken language
+- Focus on emotions, people, and relationships
+- Avoid complex metaphors and abstract poetry
+- Use natural, singable rhymes (not strict poetry rules)
+- Chorus must be catchy and easy to repeat
+- Structure like a real pop song:
+  Verse – Chorus – Verse – Chorus – Bridge – Final Chorus
+- Lyrics must sound good when sung, not just read
+- Keep lines short and melodic
+- The song must feel warm, emotional, and personal
 
-Style reference: emotional, warm, personal songs.
-
-Output ONLY the lyrics, no explanations."""
+Output ONLY the lyrics. No explanations, no comments."""
     
     user_prompt_step1 = f"""**ABSOLUTE FIRST PRIORITY - LANGUAGE:**
 ANALYZE the language used in this topic: "{topic}"
@@ -454,19 +455,20 @@ Topic: {topic}
 Mood: {mood}
 Style: {genre}
 
-Write simple, emotional pop song lyrics:
-1. STYLE: Simple words, conversational tone
-   - Like talking to a friend, not writing poetry
-   - Focus on PEOPLE, relationships, emotions
-   - Avoid complex metaphors
-2. STRUCTURE: Verse – Chorus – Verse – Chorus – Bridge – Final Chorus
-   - Each verse: 4-8 lines
-   - Chorus: 4-8 lines (CATCHY and REPEATABLE)
-3. RHYMING: Verses and chorus must rhyme clearly
-4. LENGTH: 200-300 words total
-5. Make it sound GOOD when SUNG
+Write a SONG (not a poem):
+- Use SIMPLE, SPOKEN words (like everyday conversation)
+- Focus on EMOTIONS, PEOPLE, and RELATIONSHIPS
+- Avoid abstract poetry and complex metaphors
+- Keep lines SHORT and MELODIC (easy to sing)
+- Natural, singable rhymes (not forced poetry rhymes)
+- Chorus: CATCHY and EASY TO REPEAT
+- Structure: Verse – Chorus – Verse – Chorus – Bridge – Final Chorus
+- Each verse: 4-8 lines
+- Chorus: 4-8 lines
+- LENGTH: 200-300 words total
+- Must feel WARM, EMOTIONAL, and PERSONAL
 
-Write lyrics that feel warm, personal, and emotional:"""
+Write lyrics that sound good when SUNG:"""
 
     
     async with aiohttp.ClientSession() as session:
