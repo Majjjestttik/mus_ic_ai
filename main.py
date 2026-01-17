@@ -734,13 +734,35 @@ def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
     ])
 
 def genres_keyboard(lang: str) -> InlineKeyboardMarkup:
+    # Genres with emojis and translations
+    genre_labels = {
+        "uk": {"Pop": "🎵 Поп", "Rock": "🎸 Рок", "Hip-Hop": "🎤 Хіп-Хоп", "Classical": "🎻 Класика", "Club": "💃 Клубна", "Custom": "✏️ Своя"},
+        "en": {"Pop": "🎵 Pop", "Rock": "🎸 Rock", "Hip-Hop": "🎤 Hip-Hop", "Classical": "🎻 Classical", "Club": "💃 Club", "Custom": "✏️ Custom"},
+        "ru": {"Pop": "🎵 Поп", "Rock": "🎸 Рок", "Hip-Hop": "🎤 Хип-Хоп", "Classical": "🎻 Классика", "Club": "💃 Клубная", "Custom": "✏️ Своя"},
+        "pl": {"Pop": "🎵 Pop", "Rock": "🎸 Rock", "Hip-Hop": "🎤 Hip-Hop", "Classical": "🎻 Klasyczna", "Club": "💃 Klubowa", "Custom": "✏️ Własna"},
+        "es": {"Pop": "🎵 Pop", "Rock": "🎸 Rock", "Hip-Hop": "🎤 Hip-Hop", "Classical": "🎻 Clásica", "Club": "💃 Club", "Custom": "✏️ Personalizada"},
+        "fr": {"Pop": "🎵 Pop", "Rock": "🎸 Rock", "Hip-Hop": "🎤 Hip-Hop", "Classical": "🎻 Classique", "Club": "💃 Club", "Custom": "✏️ Personnalisé"},
+        "de": {"Pop": "🎵 Pop", "Rock": "🎸 Rock", "Hip-Hop": "🎤 Hip-Hop", "Classical": "🎻 Klassisch", "Club": "💃 Club", "Custom": "✏️ Eigene"},
+    }
+    labels = genre_labels.get(lang, genre_labels["en"])
     genres = ["Pop", "Rock", "Hip-Hop", "Classical", "Club", "Custom"]
-    buttons = [[InlineKeyboardButton(g, callback_data=f"genre:{g}")] for g in genres]
+    buttons = [[InlineKeyboardButton(labels[g], callback_data=f"genre:{g}")] for g in genres]
     return InlineKeyboardMarkup(buttons)
 
 def moods_keyboard(lang: str) -> InlineKeyboardMarkup:
+    # Moods with emojis and translations
+    mood_labels = {
+        "uk": {"Happy": "😊 Радісна", "Sad": "😢 Сумна", "Love": "❤️ Кохання", "Party": "🎉 Вечірка", "Support": "🤝 Підтримка", "Custom": "✏️ Своя"},
+        "en": {"Happy": "😊 Happy", "Sad": "😢 Sad", "Love": "❤️ Love", "Party": "🎉 Party", "Support": "🤝 Support", "Custom": "✏️ Custom"},
+        "ru": {"Happy": "😊 Радостная", "Sad": "😢 Грустная", "Love": "❤️ Любовь", "Party": "🎉 Вечеринка", "Support": "🤝 Поддержка", "Custom": "✏️ Своя"},
+        "pl": {"Happy": "😊 Wesoła", "Sad": "😢 Smutna", "Love": "❤️ Miłość", "Party": "🎉 Impreza", "Support": "🤝 Wsparcie", "Custom": "✏️ Własny"},
+        "es": {"Happy": "😊 Feliz", "Sad": "😢 Triste", "Love": "❤️ Amor", "Party": "🎉 Fiesta", "Support": "🤝 Apoyo", "Custom": "✏️ Personalizado"},
+        "fr": {"Happy": "😊 Joyeux", "Sad": "😢 Triste", "Love": "❤️ Amour", "Party": "🎉 Fête", "Support": "🤝 Soutien", "Custom": "✏️ Personnalisé"},
+        "de": {"Happy": "😊 Fröhlich", "Sad": "😢 Traurig", "Love": "❤️ Liebe", "Party": "🎉 Party", "Support": "🤝 Unterstützung", "Custom": "✏️ Eigene"},
+    }
+    labels = mood_labels.get(lang, mood_labels["en"])
     moods = ["Happy", "Sad", "Love", "Party", "Support", "Custom"]
-    buttons = [[InlineKeyboardButton(m, callback_data=f"mood:{m}")] for m in moods]
+    buttons = [[InlineKeyboardButton(labels[m], callback_data=f"mood:{m}")] for m in moods]
     return InlineKeyboardMarkup(buttons)
 
 def buy_keyboard(lang: str, user_id: int) -> InlineKeyboardMarkup:
