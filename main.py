@@ -413,57 +413,38 @@ async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
     # Step 1: Generate initial lyrics with strict requirements
-    system_prompt = """You are a professional poet and songwriter with expertise in rhyme schemes, storytelling, and emotional impact. Your specialty is creating memorable, well-structured songs with consistent rhyming (including imperfect rhymes)."""
+    system_prompt = """You are a professional songwriter.
+
+Rules:
+1. Lyrics MUST rhyme in every verse.
+2. Use ONLY these rhyme schemes: ABAB or AABB.
+3. Every line must end with a clear rhyming word.
+4. No free verse, no random endings.
+5. Verses can have 4–8 lines, but ALL lines must rhyme.
+6. The lyrics must be logical, emotional, and song-ready.
+7. Avoid weak or forced rhymes.
+8. Write in a natural, musical style.
+9. If any line does NOT rhyme, rewrite the entire verse.
+
+Output ONLY the lyrics, no explanations."""
     
-    user_prompt = f"""Create song lyrics based on this description:
+    user_prompt = f"""Topic: {topic}
+Language: {topic} (detect and use the SAME language)
+Mood: {mood}
+Style: {genre}
 
-**Topic**: {topic}
-**Genre**: {genre}
-**Mood**: {mood}
+CRITICAL REQUIREMENTS:
+1. LANGUAGE: Write lyrics in the EXACT SAME LANGUAGE as the topic above. DO NOT translate to English.
+2. RHYMING: EVERY verse must rhyme (ABAB or AABB). No exceptions.
+3. LENGTH: 200-300 words total. Verses: 4-8 lines each. Chorus: 4-8 lines.
+4. STRUCTURE: Minimum 2 verses + chorus. At least ONE verse must be longer than 4 lines.
+5. STORY: Logical flow with beginning → development → conclusion.
 
-**MANDATORY REQUIREMENTS:**
-
-**LANGUAGE (CRITICAL - FIRST PRIORITY):**
-- ANALYZE the language used in the topic description above
-- Write EVERY SINGLE WORD of the lyrics in THE EXACT SAME LANGUAGE as the topic
-- If topic is in Ukrainian → ALL lyrics must be in Ukrainian
-- If topic is in Russian → ALL lyrics must be in Russian
-- If topic is in English → ALL lyrics must be in English
-- If topic is in Chinese → ALL lyrics must be in Chinese
-- DO NOT translate to English or any other language
-- PRESERVE the exact language of the topic description
-
-**RHYMING (MANDATORY - ABAB or AABB):**
-- Every verse MUST rhyme using ABAB or AABB scheme
-- ABAB: lines 1&3 rhyme, lines 2&4 rhyme
-- AABB: lines 1&2 rhyme, lines 3&4 rhyme, etc.
-- Allow IMPERFECT rhymes (similar sounds, not exact)
-- Chorus MUST have 4-8 lines with memorable hook and rhyming
-- NO lines without rhymes (even imperfect rhymes count)
-
-**STRUCTURE:**
-- Minimum: 2 verses + chorus (repeat chorus after each verse)
-- Verses: Use DIFFERENT lengths - choose from 4, 6, 8, or 10 lines
-- At least ONE verse must be longer than 4 lines (6, 8, or 10)
-- Example: Verse 1 (6 lines), Chorus (6 lines), Verse 2 (4 lines), Chorus (repeat), Bridge (4 lines), Final Chorus
-- Optional: bridge, intro, outro
-- Total: 200-300 words minimum (for 2:20-3:00 minute song)
-
-**STORYTELLING (MANDATORY):**
-- Clear arc: beginning → development → conclusion
-- NOT random phrases - logical story progression
-- Verse 1: introduce situation/emotion
-- Verse 2: develop/complicate
-- Verse 3 (if present): resolve/climax
-- Chorus: repeat the MAIN HOOK/EMOTION consistently
-- Show don't tell: use vivid imagery, concrete details
-- NO meaningless filler words
-
-**FORMAT:**
-[Verse 1] (choose 4, 6, 8, or 10 lines with ABAB or AABB rhyming)
-[Chorus] (4-8 lines with catchy hook and rhymes)
-[Verse 2] (different length: 4, 6, 8, or 10 lines with rhyming)
-[Chorus] (repeat exactly)
+FORMAT:
+[Verse 1] (4-8 lines, ABAB or AABB rhyming)
+[Chorus] (4-8 lines with memorable hook)
+[Verse 2] (4-8 lines, ABAB or AABB rhyming)
+[Chorus] (repeat)
 [Bridge] (optional, 4-6 lines)
 [Final Chorus] (repeat)
 
