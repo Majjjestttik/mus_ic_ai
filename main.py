@@ -909,7 +909,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text(tr(user_id, "error").format(tr(user_id, "no_balance")))
                 return
             
-            await query.edit_message_text(tr(user_id, "generating_music"))
+            # Remove the "Generate Song" button but keep the lyrics visible
+            await query.edit_message_reply_markup(reply_markup=None)
+            # Send a new message about music generation
+            await query.message.reply_text(tr(user_id, "generating_music"))
             
             try:
                 # Step 1: Create music generation task
