@@ -795,14 +795,15 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
         log.error(error_msg)
         raise RuntimeError(f"Connection failed: {str(e)}. Please check that PIAPI_BASE_URL is set to a valid server URL.")
 
-async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, demo: bool = False, gender: str = None, max_retries: int = 4):
+async def piapi_generate_and_poll_with_retry(lyrics: str, genre: str, mood: str, demo: bool = False, gender: str = None, max_retries: int = 4):
     """
-    Generate music with retry logic, exponential backoff, and automatic Udio fallback.
+    Generate music with COMPLETE cycle (create + poll) with retry logic, exponential backoff, and automatic Udio fallback.
     
     Strategy:
     1. Try Suno with retries (attempts 1-4): 0s → 10s → 25s → 60s
-    2. If all Suno attempts fail with error code 10000, automatically fallback to Udio
-    3. Try Udio (1 attempt without retries)
+    2. Each attempt includes BOTH task creation AND polling (complete cycle)
+    3. If all Suno attempts fail with error code 10000, automatically fallback to Udio
+    4. Try Udio (1 complete attempt: create + poll)
     
     This helps handle transient PIAPI service issues, rate limiting, and Suno downtime.
     
@@ -815,7 +816,7 @@ async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, de
         max_retries: Maximum number of Suno attempts (default: 4)
     
     Returns:
-        dict: PIAPI response with task_id
+        dict: Completed PIAPI response with audio URLs
         
     Raises:
         RuntimeError: If all retry attempts fail (both Suno and Udio)
@@ -824,25 +825,44 @@ async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, de
     suno_failed_with_10000 = False
     last_suno_error = None
     
-    # First try Suno with retries
+    # First try Suno with retries (full cycle: create + poll)
     for attempt in range(max_retries):
         try:
-            log.info(f"Suno generation attempt {attempt + 1}/{max_retries}")
-            result = await piapi_generate_music(lyrics, genre, mood, demo, gender, use_udio=False)
+            log.info(f"Suno generation attempt {attempt + 1}/{max_retries} (create + poll)")
             
-            # Success! Return immediately
+            # Step 1: Create task
+            result = await piapi_generate_music(lyrics, genre, mood, demo, gender, use_udio=False)
+            log.info(f"Suno task created successfully on attempt {attempt + 1}")
+            
+            # Extract task_id
+            task_id = None
+            if "data" in result and isinstance(result["data"], dict):
+                task_id = result["data"].get("task_id")
+            
+            if not task_id:
+                raise RuntimeError(f"No task_id in PIAPI response: {result}")
+            
+            log.info(f"Suno task_id: {task_id}, starting polling...")
+            
+            # Step 2: Poll for completion (this is where error 10000 usually occurs)
+            completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
+            
+            # Success! Return completed result
             if attempt > 0:
                 log.info(f"Suno generation succeeded on attempt {attempt + 1}")
-            return result
+            return completed_result
             
         except Exception as e:
             last_suno_error = e
             error_str = str(e)
             
             # Check if this is error code 10000 (Suno connection failure)
-            if "code': 10000" in error_str or "failed to do request" in error_str:
+            # This error typically occurs during polling, not task creation
+            if "10000" in error_str or "failed to do request" in error_str or "failed to connect to Suno" in error_str:
                 suno_failed_with_10000 = True
-                log.warning(f"Suno attempt {attempt + 1} failed with error code 10000")
+                log.warning(f"Suno attempt {attempt + 1} failed with error code 10000 (Suno service unavailable)")
+            else:
+                log.warning(f"Suno attempt {attempt + 1} failed with different error: {error_str[:200]}")
             
             is_last_attempt = (attempt == max_retries - 1)
             
@@ -858,20 +878,38 @@ async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, de
             
             # Not last attempt - wait and retry with exponential backoff
             delay = retry_delays[attempt + 1] if attempt + 1 < len(retry_delays) else 60
-            log.warning(f"Suno attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...")
+            log.warning(f"Suno attempt {attempt + 1} failed. Retrying in {delay} seconds...")
             await asyncio.sleep(delay)
     
     # If we got here, all Suno attempts failed with error code 10000
-    # Try Udio as fallback
+    # Try Udio as fallback (complete cycle: create + poll)
     if suno_failed_with_10000:
         try:
-            log.info("Attempting Udio (music-u) as fallback...")
+            log.info("🔄 Attempting Udio (music-u) fallback (create + poll)...")
+            
+            # Step 1: Create Udio task
             result = await piapi_generate_music(lyrics, genre, mood, demo, gender, use_udio=True)
+            log.info("Udio task created successfully")
+            
+            # Extract task_id
+            task_id = None
+            if "data" in result and isinstance(result["data"], dict):
+                task_id = result["data"].get("task_id")
+            
+            if not task_id:
+                raise RuntimeError(f"No task_id in Udio PIAPI response: {result}")
+            
+            log.info(f"Udio task_id: {task_id}, starting polling...")
+            
+            # Step 2: Poll for completion
+            completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
+            
             log.info("✅ Udio generation successful! Using Udio as alternative to Suno.")
-            return result
+            return completed_result
+            
         except Exception as udio_error:
             log.error(f"Udio fallback also failed: {udio_error}")
-            raise RuntimeError(f"Both Suno and Udio generation failed. Suno error: {last_suno_error}. Udio error: {udio_error}")
+            raise RuntimeError(f"Both Suno and Udio generation failed.\n\nSuno error: {last_suno_error}\n\nUdio error: {udio_error}")
     
     # Should never reach here, but just in case
     raise RuntimeError("Music generation failed unexpectedly.")
@@ -1339,28 +1377,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             log.info("Waiting 2 seconds before next generation to avoid rate limiting...")
                             await asyncio.sleep(2)
                         
-                        # Step 1: Create music generation task WITH RETRY LOGIC
-                        result = await piapi_generate_music_with_retry(lyrics, genre, mood, demo=False, gender=gender_version)
-                        log.info(f"PIAPI generate response: {result}")
+                        # Complete generation cycle (create + poll) WITH RETRY LOGIC AND UDIO FALLBACK
+                        # This will automatically try Suno first, then fallback to Udio if Suno fails with error 10000
+                        completed_result = await piapi_generate_and_poll_with_retry(lyrics, genre, mood, demo=False, gender=gender_version)
+                        log.info(f"Music generation completed. Result: {completed_result}")
                         
-                        # Extract task_id from response
-                        task_id = None
-                        if "data" in result and isinstance(result["data"], dict):
-                            task_id = result["data"].get("task_id")
-                        
-                        if not task_id:
-                            error_msg = f"No task_id in PIAPI response: {result}"
-                            log.error(error_msg)
-                            last_error = error_msg
-                            continue
-                        
-                        log.info(f"Music generation task created: {task_id} ({gender_label} vocals)")
-                        
-                        # Step 2: Poll for task completion (this may take 1-5 minutes)
-                        completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
-                        log.info(f"Polling completed. Result: {completed_result}")
-                        
-                        # Step 3: Extract audio URLs from completed task
+                        # Extract audio URLs from completed task
                         audio_urls = extract_audio_urls(completed_result)
                         log.info(f"Extracted audio URLs: {audio_urls}")
                         
