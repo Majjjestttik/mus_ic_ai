@@ -423,9 +423,15 @@ async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -
 
 **MANDATORY REQUIREMENTS:**
 
-**LANGUAGE:**
-- Detect the language from the topic description
-- Write ALL lyrics in the SAME language as the description (Chinese description → Chinese lyrics, Russian → Russian, etc.)
+**LANGUAGE (CRITICAL - FIRST PRIORITY):**
+- ANALYZE the language used in the topic description above
+- Write EVERY SINGLE WORD of the lyrics in THE EXACT SAME LANGUAGE as the topic
+- If topic is in Ukrainian → ALL lyrics must be in Ukrainian
+- If topic is in Russian → ALL lyrics must be in Russian
+- If topic is in English → ALL lyrics must be in English
+- If topic is in Chinese → ALL lyrics must be in Chinese
+- DO NOT translate to English or any other language
+- PRESERVE the exact language of the topic description
 
 **RHYMING (MANDATORY - ABAB or AABB):**
 - Every verse MUST rhyme using ABAB or AABB scheme
@@ -489,21 +495,23 @@ Write the lyrics now."""
         # Step 2: Self-validation and correction
         validation_prompt = f"""Review these song lyrics and check:
 
-1. **Rhyme scheme**: Are all verses using ABAB or AABB rhyming? Mark imperfect rhymes with (A), (B) labels at line ends
-2. **Verse lengths**: Are verses different lengths (4, 6, 8, or 10 lines)? Is at least one verse longer than 4 lines?
-3. **Structure**: Minimum 2 verses + chorus present?
-4. **Logical flow**: Does the story have beginning → development → conclusion?
-5. **No filler**: Are all phrases meaningful and necessary?
+1. **LANGUAGE PRESERVATION (CRITICAL)**: Are the lyrics in the SAME language as they were written? DO NOT translate them!
+2. **Rhyme scheme**: Are all verses using ABAB or AABB rhyming? Mark imperfect rhymes with (A), (B) labels at line ends
+3. **Verse lengths**: Are verses different lengths (4, 6, 8, or 10 lines)? Is at least one verse longer than 4 lines?
+4. **Structure**: Minimum 2 verses + chorus present?
+5. **Logical flow**: Does the story have beginning → development → conclusion?
+6. **No filler**: Are all phrases meaningful and necessary?
 
 **Original lyrics:**
 {initial_lyrics}
 
 **Your task:**
+- PRESERVE THE ORIGINAL LANGUAGE - do not translate to any other language!
 - If there are errors in rhyming, structure, or logic: REWRITE the lyrics fixing all issues while keeping the original meaning and language
 - If lyrics are already good: Return them with (A)/(B) rhyme markers added to verse lines
 - Add rhyme markers like: "Walking down the street at night (A)" and "Feeling like everything's right (A)"
 
-Return the final corrected lyrics with rhyme markers:"""
+Return the final corrected lyrics with rhyme markers IN THE SAME LANGUAGE AS THE ORIGINAL:"""
 
         async with session.post(
             "https://openrouter.ai/api/v1/chat/completions",
