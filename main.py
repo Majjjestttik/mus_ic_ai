@@ -406,13 +406,13 @@ def tr(user_id: int, key: str) -> str:
 async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -> str:
     """Generate song lyrics using OpenRouter with two-step validation
     
-    Note: lang_code is now used only as a fallback. The actual language is detected from the topic text.
+    Note: Language is automatically detected from the topic text. lang_code parameter kept for compatibility.
     """
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
     # Step 1: Generate initial lyrics with strict requirements
-    system_prompt = """You are a professional poet and songwriter with expertise in rhyme schemes, storytelling, and emotional impact. Your specialty is creating memorable, well-structured songs with perfect rhyming."""
+    system_prompt = """You are a professional poet and songwriter with expertise in rhyme schemes, storytelling, and emotional impact. Your specialty is creating memorable, well-structured songs with consistent rhyming (including imperfect rhymes)."""
     
     user_prompt = f"""Create song lyrics based on this description:
 
@@ -520,7 +520,7 @@ Return the final corrected lyrics with rhyme markers:"""
         ) as resp:
             if resp.status != 200:
                 # If validation fails, return initial lyrics
-                log.warning("Validation step failed, using initial lyrics")
+                print(f"Warning: Validation step failed with status {resp.status}, using initial lyrics")
                 return initial_lyrics
             data = await resp.json()
             final_lyrics = data["choices"][0]["message"]["content"]
