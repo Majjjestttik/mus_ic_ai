@@ -423,57 +423,66 @@ LANGUAGE:
 1. Detect the language from the user's description text
 2. Write ALL lyrics in the SAME language as the description (if Chinese description → Chinese lyrics, Russian → Russian, etc.)
 
-RHYMING (MANDATORY - EVERY VERSE AND CHORUS MUST RHYME):
-3. **EVERY verse MUST have a clear rhyme scheme** - use AABB (lines 1-2 rhyme, lines 3-4 rhyme) OR ABAB (lines 1-3 rhyme, lines 2-4 rhyme) OR ABCB (lines 2-4 rhyme, lines 1-3 don't rhyme)
-4. **EVERY chorus MUST rhyme perfectly** - this is the most important part, make the chorus rhymes strong and memorable
-5. Make the rhymes natural and smooth - choose words that rhyme naturally, not forced
-6. The LAST WORD of rhyming lines MUST actually rhyme (sound similar at the end)
-7. Example rhyme pairs: love/above, night/light, fire/desire, dream/stream, away/stay, heart/apart
+RHYMING (**URGENT PRIORITY** - MANDATORY FOR EVERY LINE):
+3. **CRITICAL**: Every verse MUST use AABB, ABAB, or ABCB rhyme scheme consistently
+4. **EVERY verse MUST have perfect rhymes** - AABB (lines 1-2 rhyme, 3-4 rhyme), ABAB (lines 1-3 rhyme, 2-4 rhyme), or ABCB (lines 2-4 rhyme)
+5. **EVERY chorus MUST rhyme perfectly** - use AABB or ABAB pattern with CLEAR end rhymes
+6. NEVER skip rhyming - it destroys song quality and is UNACCEPTABLE
+7. The LAST WORD of rhyming lines MUST actually rhyme (sound similar at the end)
+8. Example rhyme pairs: love/above, night/light, fire/desire, dream/stream, away/stay, heart/apart
+9. Random non-rhyming lyrics are UNACCEPTABLE - rhyming is the #1 PRIORITY
 
 STRUCTURE:
-8. Match the genre and mood precisely
-9. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
-10. Each verse should be 4-6 lines, each chorus should be 4-6 lines
-11. Make the song full-length (at least 200-300 words total) for AT LEAST 2 minutes 30 seconds duration
-12. Include a bridge section after the second chorus for variety
+10. Match the genre and mood precisely
+11. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
+12. Each verse should be 4-10 lines (flexible based on story needs, max 10 lines if no chorus)
+13. Each chorus should be 4-10 lines (can be longer memorable hooks)
+14. Make the song full-length (at least 200-300 words total) for AT LEAST 2 minutes 30 seconds duration
+15. Include a bridge section (3-6 lines) after the second chorus for variety
 
 STORYTELLING AND LOGIC (MANDATORY):
-13. Tell a CLEAR, COHERENT story from beginning to end
-14. Each verse should BUILD on the previous one (Verse 1: introduce, Verse 2: develop, Verse 3: climax/resolve)
-15. The chorus should REPEAT THE MAIN IDEA/EMOTION consistently
-16. Bridge should offer a NEW PERSPECTIVE or emotional shift
-17. Make logical sense - avoid random disconnected phrases
-18. Use vivid imagery and concrete details, not vague abstractions
-19. Stay focused on ONE central theme/story throughout the song
+16. Tell ONE CLEAR story with beginning, middle, and end
+17. Each verse should BUILD on the previous one (Verse 1: introduce, Verse 2: develop, Verse 3: climax/resolve)
+18. The chorus should REPEAT THE MAIN IDEA/EMOTION consistently
+19. Bridge should offer a NEW PERSPECTIVE or emotional shift
+20. Make it emotionally COMPELLING and BELIEVABLE
+21. Use SHOW DON'T TELL - describe actions/feelings, not just state them
+22. Create VISUAL SCENES the listener can imagine
+23. Build EMOTIONAL INTENSITY as the song progresses
+24. Use vivid imagery and concrete details, not vague abstractions
+25. Stay focused on ONE central theme/story throughout the song
+26. Make every word COUNT - no filler or meaningless phrases
 
 Format:
 [Intro] (optional - 1-2 lines)
 
 [Verse 1] - INTRODUCTION (set the scene, introduce characters/situation)
-(using ABAB pattern as example)
+(4-10 lines using ABAB pattern as example)
 Line 1 ending with word A
 Line 2 ending with word B
 Line 3 ending with word A (rhymes with line 1)
 Line 4 ending with word B (rhymes with line 2)
+...up to 10 lines total...
 
 [Chorus] - MAIN MESSAGE/HOOK (emotional core, what the song is about)
-(using AABB pattern as example)
+(4-10 lines using AABB pattern as example)
 Line 1 ending with word C
 Line 2 ending with word C (rhymes with line 1)
 Line 3 ending with word D
 Line 4 ending with word D (rhymes with line 3)
+...up to 10 lines total...
 
 [Verse 2] - DEVELOPMENT (deepen the story, add complications)
-...4-6 lines with MANDATORY rhymes following the same pattern...
+...4-10 lines with MANDATORY rhymes following the same pattern...
 
 [Chorus] - REPEAT EXACT SAME
 ...repeat the EXACT SAME chorus with perfect rhymes...
 
 [Bridge] - PERSPECTIVE SHIFT (new angle, realization, or emotional turn)
-...3-4 lines with different melody but STILL with rhymes...
+...3-6 lines with different melody but STILL with rhymes...
 
 [Verse 3] - RESOLUTION (climax, conclusion, or final statement)
-...4-6 lines final verse with STRONG rhymes...
+...4-10 lines final verse with STRONG rhymes...
 
 [Final Chorus] - REPEAT EXACT SAME
 ...repeat chorus one more time with perfect rhymes...
@@ -706,21 +715,22 @@ def lang_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
-    # Simple button labels in user's language
+    # Simple button labels in user's language with "New Song" option
     button_labels = {
-        "uk": ("💰 Купити", "💎 Баланс", "❓ Допомога"),
-        "en": ("💰 Buy", "💎 Balance", "❓ Help"),
-        "ru": ("💰 Купить", "💎 Баланс", "❓ Помощь"),
-        "pl": ("💰 Kup", "💎 Saldo", "❓ Pomoc"),
-        "es": ("💰 Comprar", "💎 Saldo", "❓ Ayuda"),
-        "fr": ("💰 Acheter", "💎 Solde", "❓ Aide"),
-        "de": ("💰 Kaufen", "💎 Guthaben", "❓ Hilfe"),
+        "uk": ("🎵 Нова пісня", "💰 Купити", "💎 Баланс", "❓ Допомога"),
+        "en": ("🎵 New Song", "💰 Buy", "💎 Balance", "❓ Help"),
+        "ru": ("🎵 Новая песня", "💰 Купить", "💎 Баланс", "❓ Помощь"),
+        "pl": ("🎵 Nowa piosenka", "💰 Kup", "💎 Saldo", "❓ Pomoc"),
+        "es": ("🎵 Nueva canción", "💰 Comprar", "💎 Saldo", "❓ Ayuda"),
+        "fr": ("🎵 Nouvelle chanson", "💰 Acheter", "💎 Solde", "❓ Aide"),
+        "de": ("🎵 Neues Lied", "💰 Kaufen", "💎 Guthaben", "❓ Hilfe"),
     }
     labels = button_labels.get(lang, button_labels["en"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(labels[0], callback_data="buy")],
-        [InlineKeyboardButton(labels[1], callback_data="balance")],
-        [InlineKeyboardButton(labels[2], callback_data="help")],
+        [InlineKeyboardButton(labels[0], callback_data="newsong")],
+        [InlineKeyboardButton(labels[1], callback_data="buy")],
+        [InlineKeyboardButton(labels[2], callback_data="balance")],
+        [InlineKeyboardButton(labels[3], callback_data="help")],
     ])
 
 def genres_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -915,6 +925,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = await asyncio.to_thread(get_user, user_id)
             lang = user.get("lang", "uk")
             await query.edit_message_text(tr(user_id, "menu"), reply_markup=menu_keyboard(lang))
+        
+        elif data == "newsong":
+            # Start new song creation - go directly to genre selection
+            lang = context.user_data.get("lang")
+            if not lang:
+                user = await asyncio.to_thread(get_user, user_id)
+                lang = user.get("lang", "en")
+                context.user_data["lang"] = lang
+            await query.edit_message_text(
+                tr(user_id, "choose_genre"),
+                reply_markup=genres_keyboard(lang)
+            )
         
         elif data.startswith("genre:"):
             genre = data.split(":")[1]
