@@ -687,8 +687,8 @@ def sanitize_for_piapi(text: str) -> str:
     
     return text
 
-async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, gender: str = None) -> Dict[str, Any]:
-    """Generate music using PIAPI Suno endpoint - Step 1: Create task
+async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, gender: str = None, use_udio: bool = False) -> Dict[str, Any]:
+    """Generate music using PIAPI Suno or Udio endpoint - Step 1: Create task
     
     Args:
         lyrics: Song lyrics
@@ -696,6 +696,7 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
         mood: Song mood
         demo: Whether this is demo mode
         gender: Optional vocal gender ('male', 'female', or None for default)
+        use_udio: If True, use Udio (music-u) instead of Suno (default: False)
     """
     if not PIAPI_API_KEY:
         raise RuntimeError("PIAPI_API_KEY not set")
@@ -712,40 +713,65 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
         raise RuntimeError(f"PIAPI_BASE_URL should not include the path. Set PIAPI_BASE_URL='https://api.piapi.ai' (without /api/v1/task). Current value: {PIAPI_BASE_URL}")
     
     url = f"{PIAPI_BASE_URL}{PIAPI_GENERATE_PATH}"
-    log.info(f"Calling PIAPI at: {url}")
     
     # Generate a meaningful title from the lyrics
     song_title = generate_song_title(lyrics)
     
     # Sanitize all text inputs for PIAPI compatibility
     lyrics_clean = sanitize_for_piapi(lyrics)
-    tags_clean = sanitize_for_piapi(f"{genre}, {mood}")
     title_clean = sanitize_for_piapi(song_title)
     
-    # Add gender to tags if specified
-    if gender == "male":
-        tags_clean += ", male_vocals"
-        log.info("Generating with male vocals")
-    elif gender == "female":
-        tags_clean += ", female_vocals"
-        log.info("Generating with female vocals")
-    
-    # PIAPI uses a different format - task-based API
-    # Use MINIMAL parameters - only send non-empty required fields
-    # Do NOT send mv, make_instrumental, or any experimental fields
-    payload = {
-        "model": "suno",
-        "task_type": "music",
-        "input": {}
-    }
-    
-    # Only add non-empty fields to minimize payload
-    if lyrics_clean:
-        payload["input"]["prompt"] = lyrics_clean
-    if tags_clean:
-        payload["input"]["tags"] = tags_clean
-    if title_clean:
-        payload["input"]["title"] = title_clean
+    if use_udio:
+        # Udio (music-u) format
+        log.info(f"Calling PIAPI Udio (music-u) at: {url}")
+        
+        # Build description for Udio
+        gpt_description = f"{mood} {genre} song"
+        if gender == "male":
+            gpt_description += " with male vocals"
+        elif gender == "female":
+            gpt_description += " with female vocals"
+        
+        payload = {
+            "model": "music-u",
+            "task_type": "generate_music",
+            "input": {
+                "gpt_description_prompt": sanitize_for_piapi(gpt_description),
+                "lyrics": lyrics_clean,
+                "lyrics_type": "song",
+                "seed": -1
+            }
+        }
+    else:
+        # Suno format (default)
+        log.info(f"Calling PIAPI Suno at: {url}")
+        
+        tags_clean = sanitize_for_piapi(f"{genre}, {mood}")
+        
+        # Add gender to tags if specified
+        if gender == "male":
+            tags_clean += ", male_vocals"
+            log.info("Generating with male vocals")
+        elif gender == "female":
+            tags_clean += ", female_vocals"
+            log.info("Generating with female vocals")
+        
+        # PIAPI Suno format - task-based API
+        # Use MINIMAL parameters - only send non-empty required fields
+        # Do NOT send mv, make_instrumental, or any experimental fields
+        payload = {
+            "model": "suno",
+            "task_type": "music",
+            "input": {}
+        }
+        
+        # Only add non-empty fields to minimize payload
+        if lyrics_clean:
+            payload["input"]["prompt"] = lyrics_clean
+        if tags_clean:
+            payload["input"]["tags"] = tags_clean
+        if title_clean:
+            payload["input"]["title"] = title_clean
     
     # PIAPI uses X-API-Key header, not Authorization Bearer
     headers = {
@@ -771,10 +797,14 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
 
 async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, demo: bool = False, gender: str = None, max_retries: int = 4):
     """
-    Generate music with retry logic and exponential backoff.
+    Generate music with retry logic, exponential backoff, and automatic Udio fallback.
     
-    Retry schedule: 0s → 10s → 25s → 60s
-    This helps handle transient PIAPI service issues and rate limiting.
+    Strategy:
+    1. Try Suno with retries (attempts 1-4): 0s → 10s → 25s → 60s
+    2. If all Suno attempts fail with error code 10000, automatically fallback to Udio
+    3. Try Udio (1 attempt without retries)
+    
+    This helps handle transient PIAPI service issues, rate limiting, and Suno downtime.
     
     Args:
         lyrics: Song lyrics
@@ -782,38 +812,69 @@ async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, de
         mood: Song mood
         demo: Demo mode flag
         gender: Optional gender for vocals
-        max_retries: Maximum number of attempts (default: 4)
+        max_retries: Maximum number of Suno attempts (default: 4)
     
     Returns:
         dict: PIAPI response with task_id
         
     Raises:
-        RuntimeError: If all retry attempts fail
+        RuntimeError: If all retry attempts fail (both Suno and Udio)
     """
     retry_delays = [0, 10, 25, 60]  # seconds between retries
+    suno_failed_with_10000 = False
+    last_suno_error = None
     
+    # First try Suno with retries
     for attempt in range(max_retries):
         try:
-            log.info(f"Generation attempt {attempt + 1}/{max_retries}")
-            result = await piapi_generate_music(lyrics, genre, mood, demo, gender)
+            log.info(f"Suno generation attempt {attempt + 1}/{max_retries}")
+            result = await piapi_generate_music(lyrics, genre, mood, demo, gender, use_udio=False)
             
             # Success! Return immediately
             if attempt > 0:
-                log.info(f"Generation succeeded on attempt {attempt + 1}")
+                log.info(f"Suno generation succeeded on attempt {attempt + 1}")
             return result
             
         except Exception as e:
+            last_suno_error = e
+            error_str = str(e)
+            
+            # Check if this is error code 10000 (Suno connection failure)
+            if "code': 10000" in error_str or "failed to do request" in error_str:
+                suno_failed_with_10000 = True
+                log.warning(f"Suno attempt {attempt + 1} failed with error code 10000")
+            
             is_last_attempt = (attempt == max_retries - 1)
             
             if is_last_attempt:
-                # All attempts failed
-                log.error(f"All {max_retries} generation attempts failed. Last error: {e}")
-                raise RuntimeError("Service overloaded or temporarily unavailable. Please try again in a few minutes.")
+                # All Suno attempts failed
+                if suno_failed_with_10000:
+                    log.warning(f"All {max_retries} Suno attempts failed with code 10000. Trying Udio fallback...")
+                    break  # Exit loop to try Udio
+                else:
+                    # Not error 10000 - don't try Udio, just fail
+                    log.error(f"All {max_retries} Suno attempts failed. Last error: {e}")
+                    raise RuntimeError("Service overloaded or temporarily unavailable. Please try again in a few minutes.")
             
             # Not last attempt - wait and retry with exponential backoff
             delay = retry_delays[attempt + 1] if attempt + 1 < len(retry_delays) else 60
-            log.warning(f"Generation attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...")
+            log.warning(f"Suno attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...")
             await asyncio.sleep(delay)
+    
+    # If we got here, all Suno attempts failed with error code 10000
+    # Try Udio as fallback
+    if suno_failed_with_10000:
+        try:
+            log.info("Attempting Udio (music-u) as fallback...")
+            result = await piapi_generate_music(lyrics, genre, mood, demo, gender, use_udio=True)
+            log.info("✅ Udio generation successful! Using Udio as alternative to Suno.")
+            return result
+        except Exception as udio_error:
+            log.error(f"Udio fallback also failed: {udio_error}")
+            raise RuntimeError(f"Both Suno and Udio generation failed. Suno error: {last_suno_error}. Udio error: {udio_error}")
+    
+    # Should never reach here, but just in case
+    raise RuntimeError("Music generation failed unexpectedly.")
 
 async def piapi_poll_task(task_id: str, max_attempts: int = 60, delay: int = 5) -> Dict[str, Any]:
     """Poll PIAPI task until completion - Step 2: Wait for results
