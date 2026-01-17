@@ -429,6 +429,8 @@ async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
     # Step 1: Generate initial lyrics - SONG, NOT POEM
     system_prompt_step1 = """Write a SONG, not a poem.
 
+CRITICAL: You MUST write in the SAME LANGUAGE as the user's topic. If the topic is in Russian, write in Russian. If in English, write in English. If in Ukrainian, write in Ukrainian. NEVER default to one language.
+
 Rules:
 - Use simple, spoken language
 - Focus on emotions, people, and relationships
@@ -480,7 +482,7 @@ Write lyrics that sound good when SUNG:"""
                 "Content-Type": "application/json",
             },
             json={
-                "model": "openai/gpt-3.5-turbo",
+                "model": "openai/gpt-4o-mini",  # Upgraded to GPT-4o-mini for better language detection
                 "messages": [
                     {"role": "system", "content": system_prompt_step1},
                     {"role": "user", "content": user_prompt_step1}
@@ -527,7 +529,7 @@ DO NOT translate to English. DO NOT change the language. ONLY improve the rhymes
                 "Content-Type": "application/json",
             },
             json={
-                "model": "openai/gpt-3.5-turbo",
+                "model": "openai/gpt-4o-mini",  # Upgraded to GPT-4o-mini for better rhyme and language handling
                 "messages": [
                     {"role": "system", "content": "You are an expert rhyme editor. You rewrite lyrics to have perfect phonetic rhymes (rhymes by SOUND) while ABSOLUTELY PRESERVING the original language. NEVER translate to English. NEVER change the language."},
                     {"role": "user", "content": rhyme_correction_prompt}
@@ -763,8 +765,18 @@ async def piapi_poll_task(task_id: str, max_attempts: int = 60, delay: int = 5) 
                             log.info(f"Task {task_id} completed successfully")
                             return data
                         elif status in ["failed", "error"]:
-                            error_msg = task_data.get("error", "Unknown error")
-                            raise RuntimeError(f"Task failed: {error_msg}")
+                            error_info = task_data.get("error", task_data)
+                            # Check for specific PIAPI error codes
+                            if isinstance(error_info, dict):
+                                error_code = error_info.get("code")
+                                error_msg = error_info.get("message", "Unknown error")
+                                
+                                if error_code == 10000:
+                                    raise RuntimeError(f"PIAPI failed to connect to Suno API. This usually means:\n- Suno service is temporarily down\n- Rate limiting\n- PIAPI account needs credits/subscription\nError: {error_info}")
+                                else:
+                                    raise RuntimeError(f"Task failed (code {error_code}): {error_msg}\nDetails: {error_info}")
+                            else:
+                                raise RuntimeError(f"Task failed: {error_info}")
                         elif status in ["pending", "processing", "queued"]:
                             # Task still processing, wait and retry
                             await asyncio.sleep(delay)
