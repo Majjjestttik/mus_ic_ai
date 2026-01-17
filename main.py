@@ -423,21 +423,38 @@ CRITICAL RULES:
 3. Create a proper rhyme scheme - each verse MUST have rhyming lines (AABB, ABAB, or ABCB pattern)
 4. Make the rhymes natural and smooth, not forced
 5. Match the genre and mood precisely
+6. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
+7. Each verse should be 4-6 lines, each chorus should be 4-6 lines
+8. Make the song full-length (at least 150-200 words total) for 2-3 minute duration
+9. Include a bridge section after the second chorus for variety
 
 Format:
+[Intro] (optional - 1-2 lines)
+
 [Verse 1]
-...lyrics with clear rhymes...
+...4-6 lines with clear rhymes...
 
 [Chorus]
-...catchy chorus with strong rhymes...
+...4-6 lines catchy chorus with strong rhymes...
 
 [Verse 2]
-...more lyrics with rhymes...
+...4-6 lines more lyrics with rhymes...
 
 [Chorus]
 ...repeat chorus...
 
-Write creative, emotional lyrics with perfect rhyming. The language MUST match the user's description language."""
+[Bridge]
+...3-4 lines different melody/mood...
+
+[Verse 3]
+...4-6 lines final verse...
+
+[Final Chorus]
+...repeat chorus with variations...
+
+[Outro] (optional - 1-2 lines)
+
+Write creative, emotional, FULL-LENGTH lyrics with perfect rhyming. The language MUST match the user's description language. Make it a complete, professional song that will last 2-3 minutes."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -619,8 +636,8 @@ def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
     user_trans = TRANSLATIONS.get(lang, TRANSLATIONS["uk"])
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 " + user_trans["buy"], callback_data="buy")],
-        [InlineKeyboardButton("💎 Баланс" if lang in ["uk", "ru"] else ("Saldo" if lang == "pl" else "Balance"), callback_data="balance")],
-        [InlineKeyboardButton("❓ Допомога" if lang == "uk" else ("Помощь" if lang == "ru" else ("Pomoc" if lang == "pl" else "Help")), callback_data="help")],
+        [InlineKeyboardButton("💎 " + user_trans["balance"], callback_data="balance")],
+        [InlineKeyboardButton("❓ " + user_trans["help"], callback_data="help")],
     ])
 
 def genres_keyboard(lang: str) -> InlineKeyboardMarkup:
@@ -755,6 +772,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = await asyncio.to_thread(get_user, user_id)
             lang = user.get("lang", "uk")
             await query.edit_message_text(tr(user_id, "help"), reply_markup=menu_keyboard(lang))
+        
+        elif data == "menu":
+            user = await asyncio.to_thread(get_user, user_id)
+            lang = user.get("lang", "uk")
+            await query.edit_message_text(tr(user_id, "menu"), reply_markup=menu_keyboard(lang))
         
         elif data.startswith("genre:"):
             genre = data.split(":")[1]
