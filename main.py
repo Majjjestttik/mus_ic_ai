@@ -1155,6 +1155,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     generate_versions = [None]
                     log.info("No specific gender preference - generating default version")
                 
+                # Generate song title from lyrics (will be used for all versions)
+                song_title = generate_song_title(lyrics)
+                log.info(f"Generated song title: {song_title}")
+                
                 # Generate each version
                 generated_count = 0
                 for idx, gender_version in enumerate(generate_versions):
