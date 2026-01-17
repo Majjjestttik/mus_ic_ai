@@ -425,7 +425,7 @@ CRITICAL RULES:
 5. Match the genre and mood precisely
 6. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
 7. Each verse should be 4-6 lines, each chorus should be 4-6 lines
-8. Make the song full-length (at least 150-200 words total) for 2-3 minute duration
+8. Make the song full-length (at least 150-250 words total) for 2-3 minute duration
 9. Include a bridge section after the second chorus for variety
 
 Format:
@@ -633,11 +633,21 @@ def lang_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 def menu_keyboard(lang: str) -> InlineKeyboardMarkup:
-    user_trans = TRANSLATIONS.get(lang, TRANSLATIONS["uk"])
+    # Simple button labels in user's language
+    button_labels = {
+        "uk": ("💰 Купити", "💎 Баланс", "❓ Допомога"),
+        "en": ("💰 Buy", "💎 Balance", "❓ Help"),
+        "ru": ("💰 Купить", "💎 Баланс", "❓ Помощь"),
+        "pl": ("💰 Kup", "💎 Saldo", "❓ Pomoc"),
+        "es": ("💰 Comprar", "💎 Saldo", "❓ Ayuda"),
+        "fr": ("💰 Acheter", "💎 Solde", "❓ Aide"),
+        "de": ("💰 Kaufen", "💎 Guthaben", "❓ Hilfe"),
+    }
+    labels = button_labels.get(lang, button_labels["en"])
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 " + user_trans["buy"], callback_data="buy")],
-        [InlineKeyboardButton("💎 " + user_trans["balance"], callback_data="balance")],
-        [InlineKeyboardButton("❓ " + user_trans["help"], callback_data="help")],
+        [InlineKeyboardButton(labels[0], callback_data="buy")],
+        [InlineKeyboardButton(labels[1], callback_data="balance")],
+        [InlineKeyboardButton(labels[2], callback_data="help")],
     ])
 
 def genres_keyboard(lang: str) -> InlineKeyboardMarkup:
