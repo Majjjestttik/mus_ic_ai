@@ -434,44 +434,55 @@ STRUCTURE:
 8. Match the genre and mood precisely
 9. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
 10. Each verse should be 4-6 lines, each chorus should be 4-6 lines
-11. Make the song full-length (at least 150-250 words total) for 2-3 minute duration
+11. Make the song full-length (at least 200-300 words total) for AT LEAST 2 minutes 30 seconds duration
 12. Include a bridge section after the second chorus for variety
+
+STORYTELLING AND LOGIC (MANDATORY):
+13. Tell a CLEAR, COHERENT story from beginning to end
+14. Each verse should BUILD on the previous one (Verse 1: introduce, Verse 2: develop, Verse 3: climax/resolve)
+15. The chorus should REPEAT THE MAIN IDEA/EMOTION consistently
+16. Bridge should offer a NEW PERSPECTIVE or emotional shift
+17. Make logical sense - avoid random disconnected phrases
+18. Use vivid imagery and concrete details, not vague abstractions
+19. Stay focused on ONE central theme/story throughout the song
 
 Format:
 [Intro] (optional - 1-2 lines)
 
-[Verse 1] (using ABAB pattern as example)
+[Verse 1] - INTRODUCTION (set the scene, introduce characters/situation)
+(using ABAB pattern as example)
 Line 1 ending with word A
 Line 2 ending with word B
 Line 3 ending with word A (rhymes with line 1)
 Line 4 ending with word B (rhymes with line 2)
 
-[Chorus] (using AABB pattern as example)
+[Chorus] - MAIN MESSAGE/HOOK (emotional core, what the song is about)
+(using AABB pattern as example)
 Line 1 ending with word C
 Line 2 ending with word C (rhymes with line 1)
 Line 3 ending with word D
 Line 4 ending with word D (rhymes with line 3)
 
-[Verse 2]
+[Verse 2] - DEVELOPMENT (deepen the story, add complications)
 ...4-6 lines with MANDATORY rhymes following the same pattern...
 
-[Chorus]
+[Chorus] - REPEAT EXACT SAME
 ...repeat the EXACT SAME chorus with perfect rhymes...
 
-[Bridge]
+[Bridge] - PERSPECTIVE SHIFT (new angle, realization, or emotional turn)
 ...3-4 lines with different melody but STILL with rhymes...
 
-[Verse 3]
+[Verse 3] - RESOLUTION (climax, conclusion, or final statement)
 ...4-6 lines final verse with STRONG rhymes...
 
-[Final Chorus]
+[Final Chorus] - REPEAT EXACT SAME
 ...repeat chorus one more time with perfect rhymes...
 
 [Outro] (optional - 1-2 lines)
 
-REMEMBER: EVERY SINGLE VERSE AND CHORUS MUST HAVE CLEAR, OBVIOUS RHYMES. The last words of the rhyming lines MUST sound similar. This is NOT optional - rhyming is MANDATORY for EVERY section.
+REMEMBER: EVERY SINGLE VERSE AND CHORUS MUST HAVE CLEAR, OBVIOUS RHYMES. The last words of the rhyming lines MUST sound similar. This is NOT optional - rhyming is MANDATORY for EVERY section. The story must FLOW LOGICALLY from start to finish. Each line should connect to the next meaningfully. Avoid random word salad - make it make sense!
 
-Write creative, emotional, FULL-LENGTH lyrics with PERFECT MANDATORY rhyming in EVERY verse and chorus. The language MUST match the user's description language. Make it a complete, professional song that will last 2-3 minutes with CONSISTENT RHYMING throughout."""
+Write creative, emotional, FULL-LENGTH lyrics (200-300 words) with PERFECT MANDATORY rhyming in EVERY verse and chorus. The language MUST match the user's description language. Make it a complete, professional song that will last AT LEAST 2 minutes 30 seconds (2:30) with CONSISTENT RHYMING and COHERENT STORYTELLING throughout."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -735,6 +746,61 @@ async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.to_thread(ensure_user, user_id)
     
     await update.message.reply_text(tr(user_id, "choose_language"), reply_markup=lang_keyboard())
+
+async def cmd_current(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current song progress"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    user_data = context.user_data
+    genre = user_data.get("genre", "Not selected")
+    mood = user_data.get("mood", "Not selected")
+    lyrics = user_data.get("lyrics", "Not generated yet")
+    
+    message = f"📝 **Current Song:**\n\n"
+    message += f"🎸 Genre: {genre}\n"
+    message += f"😊 Mood: {mood}\n\n"
+    
+    if lyrics != "Not generated yet":
+        message += f"📄 Lyrics:\n{lyrics[:500]}{'...' if len(lyrics) > 500 else ''}"
+    else:
+        message += "No lyrics generated yet. Use /start to create a song!"
+    
+    await update.message.reply_text(message)
+
+async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user balance"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    user = await asyncio.to_thread(get_user, user_id)
+    balance = user.get("balance", 0)
+    lang = user.get("lang", "en")
+    
+    message = tr(user_id, "balance").format(balance)
+    await update.message.reply_text(message, reply_markup=menu_keyboard(lang))
+
+async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show purchase options"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    user = await asyncio.to_thread(get_user, user_id)
+    balance = user.get("balance", 0)
+    lang = user.get("lang", "en")
+    
+    text = f"{tr(user_id, 'buy')}\n{tr(user_id, 'balance').format(balance)}"
+    await update.message.reply_text(text, reply_markup=buy_keyboard(lang, user_id))
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show help text"""
+    user_id = update.effective_user.id
+    await asyncio.to_thread(ensure_user, user_id)
+    
+    user = await asyncio.to_thread(get_user, user_id)
+    lang = user.get("lang", "en")
+    
+    await update.message.reply_text(tr(user_id, "help"), reply_markup=menu_keyboard(lang))
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1062,6 +1128,10 @@ async def start_telegram_bot():
     telegram_app.add_handler(CommandHandler("start", cmd_start))
     telegram_app.add_handler(CommandHandler("menu", cmd_menu))
     telegram_app.add_handler(CommandHandler("language", cmd_language))
+    telegram_app.add_handler(CommandHandler("current", cmd_current))
+    telegram_app.add_handler(CommandHandler("balance", cmd_balance))
+    telegram_app.add_handler(CommandHandler("buy", cmd_buy))
+    telegram_app.add_handler(CommandHandler("help", cmd_help))
     telegram_app.add_handler(CallbackQueryHandler(on_callback))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
 
