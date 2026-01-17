@@ -15,11 +15,15 @@ MusicAi PRO - A Telegram bot for generating song lyrics and music using AI.
 
 The following environment variables are required:
 
-- `TELEGRAM_TOKEN`: Your Telegram bot token
+- `BOT_TOKEN`: Your Telegram bot token
 - `OPENROUTER_API_KEY`: API key for OpenRouter (lyrics generation)
-- `SUNO_API_KEY`: API key for Suno AI (music generation) - optional
-- `SUNO_API_URL`: Suno API endpoint URL (default: `https://api.sunoapi.org`)
-- `SUNO_MODEL`: Suno AI model version (default: `chirp-v3-5`)
+- `PIAPI_API_KEY`: API key for PIAPI (music generation via Suno) - Get from https://piapi.ai
+- `PIAPI_BASE_URL`: PIAPI base URL (default: `https://api.piapi.ai`)
+- `PIAPI_GENERATE_PATH`: Path to Suno music generation endpoint (default: `/api/v1/task`)
+- `DATABASE_URL`: PostgreSQL database connection string
+- `STRIPE_SECRET_KEY`: Stripe API secret key (for payments)
+- `STRIPE_WEBHOOK_SECRET`: Stripe webhook secret
+- `BOT_USERNAME`: Your bot username (for redirect URLs)
 - `ADMIN_ID`: Telegram user ID for admin (optional)
 
 ## Setup
@@ -31,10 +35,17 @@ pip install -r requirements.txt
 
 2. Set up environment variables (create a `.env` file or use your hosting platform's environment variables):
 ```
-TELEGRAM_TOKEN=your_telegram_bot_token
+BOT_TOKEN=your_telegram_bot_token
 OPENROUTER_API_KEY=your_openrouter_key
-SUNO_API_KEY=your_suno_api_key
+PIAPI_API_KEY=your_piapi_key
+# PIAPI_BASE_URL=https://api.piapi.ai  # Optional, this is the default
+# PIAPI_GENERATE_PATH=/api/v1/task     # Optional, this is the default
+DATABASE_URL=postgresql://user:pass@host/db
+STRIPE_SECRET_KEY=your_stripe_key
+STRIPE_WEBHOOK_SECRET=your_webhook_secret
 ```
+
+**Note**: You can get your PIAPI API key from https://piapi.ai. See documentation at https://piapi.ai/docs/suno-api/music
 
 3. Run the bot:
 ```bash
