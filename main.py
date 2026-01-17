@@ -573,8 +573,13 @@ def generate_song_title(lyrics: str, max_length: int = 50) -> str:
         else:
             title = "Untitled Song"
     
-    # Clean up the title - remove punctuation at the end, limit length
-    title = title.rstrip('.,!?;:')
+    # Clean up the title - remove rhyme markers (A)/(B) and punctuation
+    import re
+    title = re.sub(r'\s*\([AB]\)\s*$', '', title)  # Remove (A) or (B) at end
+    title = title.rstrip('.,!?;:')  # Remove trailing punctuation
+    title = title.strip()  # Remove extra whitespace
+    
+    # Limit length
     if len(title) > max_length:
         title = title[:max_length].rsplit(' ', 1)[0]  # Cut at word boundary
     
