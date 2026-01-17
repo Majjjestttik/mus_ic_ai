@@ -748,7 +748,7 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
             "input": {
                 "gpt_description_prompt": sanitize_for_piapi(gpt_description),
                 "lyrics": lyrics_clean,
-                "lyrics_type": "song",
+                "lyrics_type": "user",  # Fixed: "song" not supported, should be "user" for custom lyrics
                 "seed": -1
             }
         }
