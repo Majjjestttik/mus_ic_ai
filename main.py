@@ -505,6 +505,48 @@ Write creative, emotional, FULL-LENGTH lyrics (200-300 words) with PERFECT MANDA
 # -------------------------
 # PIAPI Suno music generation
 # -------------------------
+def generate_song_title(lyrics: str, max_length: int = 50) -> str:
+    """Generate a meaningful song title from lyrics"""
+    if not lyrics:
+        return "Untitled Song"
+    
+    # Try to extract chorus (most common approach)
+    lines = lyrics.split('\n')
+    chorus_lines = []
+    in_chorus = False
+    
+    for line in lines:
+        line = line.strip()
+        if '[Chorus]' in line or '[CHORUS]' in line:
+            in_chorus = True
+            continue
+        elif line.startswith('[') and line.endswith(']'):
+            in_chorus = False
+            continue
+        
+        if in_chorus and line:
+            chorus_lines.append(line)
+    
+    # If we found a chorus, use first line
+    if chorus_lines:
+        title = chorus_lines[0]
+    else:
+        # Otherwise, use the first meaningful line (skip tags like [Verse 1])
+        for line in lines:
+            line = line.strip()
+            if line and not (line.startswith('[') and line.endswith(']')):
+                title = line
+                break
+        else:
+            title = "Untitled Song"
+    
+    # Clean up the title - remove punctuation at the end, limit length
+    title = title.rstrip('.,!?;:')
+    if len(title) > max_length:
+        title = title[:max_length].rsplit(' ', 1)[0]  # Cut at word boundary
+    
+    return title if title else "Untitled Song"
+
 async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -> Dict[str, Any]:
     """Generate music using PIAPI Suno endpoint - Step 1: Create task"""
     if not PIAPI_API_KEY:
@@ -524,6 +566,9 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
     url = f"{PIAPI_BASE_URL}{PIAPI_GENERATE_PATH}"
     log.info(f"Calling PIAPI at: {url}")
     
+    # Generate a meaningful title from the lyrics
+    song_title = generate_song_title(lyrics)
+    
     # PIAPI uses a different format - task-based API
     payload = {
         "model": "suno",
@@ -531,7 +576,7 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
         "input": {
             "prompt": lyrics,
             "tags": f"{genre}, {mood}",
-            "title": f"{genre} song",
+            "title": song_title,
             "make_instrumental": False,
         }
     }
