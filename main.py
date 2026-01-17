@@ -100,6 +100,8 @@ TRANSLATIONS = {
 
 Питання? Напишіть @support""",
         "choose_genre_first": "Спочатку оберіть жанр:",
+        "generate_button": "🎵 Згенерувати пісню",
+        "your_lyrics": "📝 Ваш текст пісні:",
     },
     "en": {
         "welcome": "🎵 Welcome to MusicAI PRO!\nI'll help you create personalized songs.",
@@ -134,6 +136,8 @@ How to use:
 
 Questions? Contact @support""",
         "choose_genre_first": "Choose genre first:",
+        "generate_button": "🎵 Generate Song",
+        "your_lyrics": "📝 Your lyrics:",
     },
     "ru": {
         "welcome": "🎵 Добро пожаловать в MusicAI PRO!\nЯ помогу создать персональную песню.",
@@ -168,6 +172,8 @@ Questions? Contact @support""",
 
 Вопросы? Напишите @support""",
         "choose_genre_first": "Сначала выберите жанр:",
+        "generate_button": "🎵 Сгенерировать песню",
+        "your_lyrics": "📝 Ваш текст песни:",
     },
     "pl": {
         "welcome": "🎵 Witamy w MusicAI PRO!\nPomogę Ci stworzyć spersonalizowaną piosenkę.",
@@ -202,6 +208,8 @@ Jak używać:
 
 Pytania? Skontaktuj się @support""",
         "choose_genre_first": "Najpierw wybierz gatunek:",
+        "generate_button": "🎵 Generuj piosenkę",
+        "your_lyrics": "📝 Twój tekst:",
     },
     "es": {
         "welcome": "🎵 ¡Bienvenido a MusicAI PRO!\nTe ayudaré a crear canciones personalizadas.",
@@ -236,6 +244,8 @@ Cómo usar:
 
 ¿Preguntas? Contacta @support""",
         "choose_genre_first": "Primero elige un género:",
+        "generate_button": "🎵 Generar canción",
+        "your_lyrics": "📝 Tu letra:",
     },
     "fr": {
         "welcome": "🎵 Bienvenue sur MusicAI PRO!\nJe vais vous aider à créer des chansons personnalisées.",
@@ -270,6 +280,8 @@ Comment utiliser:
 
 Questions? Contactez @support""",
         "choose_genre_first": "Choisissez d'abord un genre:",
+        "generate_button": "🎵 Générer la chanson",
+        "your_lyrics": "📝 Vos paroles:",
     },
     "de": {
         "welcome": "🎵 Willkommen bei MusicAI PRO!\nIch helfe dir, personalisierte Songs zu erstellen.",
@@ -304,6 +316,8 @@ Wie zu verwenden:
 
 Fragen? Kontaktiere @support""",
         "choose_genre_first": "Wähle zuerst ein Genre:",
+        "generate_button": "🎵 Song generieren",
+        "your_lyrics": "📝 Dein Text:",
     },
 }
 
@@ -390,39 +404,40 @@ def tr(user_id: int, key: str) -> str:
 # OpenRouter lyrics generation
 # -------------------------
 async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -> str:
-    """Generate song lyrics using OpenRouter"""
+    """Generate song lyrics using OpenRouter
+    
+    Note: lang_code is now used only as a fallback. The actual language is detected from the topic text.
+    """
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
-    # Map language codes to full language names
-    lang_names = {
-        "uk": "Ukrainian",
-        "en": "English", 
-        "ru": "Russian",
-        "es": "Spanish",
-        "fr": "French",
-        "de": "German",
-        "pl": "Polish"
-    }
-    lang_name = lang_names.get(lang_code, "English")
+    prompt = f"""Analyze the language of the user's song description and write the lyrics in THE SAME LANGUAGE as the description.
 
-    prompt = f"""Create song lyrics in {lang_name} language.
-Topic: {topic}
+User's song description: {topic}
 Genre: {genre}
 Mood: {mood}
 
-IMPORTANT: Write lyrics with proper rhyme scheme. Each verse should have rhyming lines.
-IMPORTANT: Write the lyrics in {lang_name} language ONLY, not in English.
-Format: 
+CRITICAL RULES:
+1. Detect the language from the user's description text
+2. Write ALL lyrics in the SAME language as the description (if Chinese description → Chinese lyrics, Russian → Russian, etc.)
+3. Create a proper rhyme scheme - each verse MUST have rhyming lines (AABB, ABAB, or ABCB pattern)
+4. Make the rhymes natural and smooth, not forced
+5. Match the genre and mood precisely
+
+Format:
 [Verse 1]
-...lyrics with rhymes...
+...lyrics with clear rhymes...
 
 [Chorus]
-...catchy chorus with rhymes...
+...catchy chorus with strong rhymes...
 
 [Verse 2]
 ...more lyrics with rhymes...
-"""
+
+[Chorus]
+...repeat chorus...
+
+Write creative, emotional lyrics with perfect rhyming. The language MUST match the user's description language."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -857,12 +872,18 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             context.user_data["lyrics"] = lyrics
             
+            # Get user language for button text
+            lang = user_data.get("lang")
+            if not lang:
+                user = await asyncio.to_thread(get_user, user_id)
+                lang = user.get("lang", "en")
+            
             # Show lyrics with generate button
             kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("🎵 Сгенерировать песню", callback_data=f"generate:{user_id}")
+                InlineKeyboardButton(tr(user_id, "generate_button"), callback_data=f"generate:{user_id}")
             ]])
             
-            await update.message.reply_text(f"📝 Your lyrics:\n\n{lyrics}", reply_markup=kb)
+            await update.message.reply_text(f"{tr(user_id, 'your_lyrics')}\n\n{lyrics}", reply_markup=kb)
         except Exception as e:
             log.error(f"Lyrics generation error: {e}")
             await update.message.reply_text(tr(user_id, "error").format(str(e)))
