@@ -103,6 +103,8 @@ TRANSLATIONS = {
         "choose_genre_first": "Спочатку оберіть жанр:",
         "generate_button": "🎵 Згенерувати пісню",
         "your_lyrics": "📝 Ваш текст пісні:",
+        "enter_custom_genre": "✏️ Введіть свій жанр:",
+        "enter_custom_mood": "✏️ Введіть свій настрій:",
     },
     "en": {
         "welcome": "🎵 Welcome to MusicAI PRO!\nI'll help you create personalized songs.",
@@ -139,6 +141,8 @@ Questions? Contact @support""",
         "choose_genre_first": "Choose genre first:",
         "generate_button": "🎵 Generate Song",
         "your_lyrics": "📝 Your lyrics:",
+        "enter_custom_genre": "✏️ Enter your custom genre:",
+        "enter_custom_mood": "✏️ Enter your custom mood:",
     },
     "ru": {
         "welcome": "🎵 Добро пожаловать в MusicAI PRO!\nЯ помогу создать персональную песню.",
@@ -175,6 +179,8 @@ Questions? Contact @support""",
         "choose_genre_first": "Сначала выберите жанр:",
         "generate_button": "🎵 Сгенерировать песню",
         "your_lyrics": "📝 Ваш текст песни:",
+        "enter_custom_genre": "✏️ Введите свой жанр:",
+        "enter_custom_mood": "✏️ Введите своё настроение:",
     },
     "pl": {
         "welcome": "🎵 Witamy w MusicAI PRO!\nPomogę Ci stworzyć spersonalizowaną piosenkę.",
@@ -211,6 +217,8 @@ Pytania? Skontaktuj się @support""",
         "choose_genre_first": "Najpierw wybierz gatunek:",
         "generate_button": "🎵 Generuj piosenkę",
         "your_lyrics": "📝 Twój tekst:",
+        "enter_custom_genre": "✏️ Wprowadź własny gatunek:",
+        "enter_custom_mood": "✏️ Wprowadź własny nastrój:",
     },
     "es": {
         "welcome": "🎵 ¡Bienvenido a MusicAI PRO!\nTe ayudaré a crear canciones personalizadas.",
@@ -247,6 +255,8 @@ Cómo usar:
         "choose_genre_first": "Primero elige un género:",
         "generate_button": "🎵 Generar canción",
         "your_lyrics": "📝 Tu letra:",
+        "enter_custom_genre": "✏️ Introduce tu género personalizado:",
+        "enter_custom_mood": "✏️ Introduce tu estado de ánimo personalizado:",
     },
     "fr": {
         "welcome": "🎵 Bienvenue sur MusicAI PRO!\nJe vais vous aider à créer des chansons personnalisées.",
@@ -283,6 +293,8 @@ Questions? Contactez @support""",
         "choose_genre_first": "Choisissez d'abord un genre:",
         "generate_button": "🎵 Générer la chanson",
         "your_lyrics": "📝 Vos paroles:",
+        "enter_custom_genre": "✏️ Entrez votre genre personnalisé:",
+        "enter_custom_mood": "✏️ Entrez votre ambiance personnalisée:",
     },
     "de": {
         "welcome": "🎵 Willkommen bei MusicAI PRO!\nIch helfe dir, personalisierte Songs zu erstellen.",
@@ -319,6 +331,8 @@ Fragen? Kontaktiere @support""",
         "choose_genre_first": "Wähle zuerst ein Genre:",
         "generate_button": "🎵 Song generieren",
         "your_lyrics": "📝 Dein Text:",
+        "enter_custom_genre": "✏️ Gib dein eigenes Genre ein:",
+        "enter_custom_mood": "✏️ Gib deine eigene Stimmung ein:",
     },
 }
 
@@ -404,10 +418,10 @@ def tr(user_id: int, key: str) -> str:
 # -------------------------
 # OpenRouter lyrics generation
 # -------------------------
-async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -> str:
-    """Generate song lyrics using OpenRouter with two-step validation
+async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
+    """Generate song lyrics using OpenRouter with two-step validation.
     
-    Note: Language is automatically detected from the topic text. lang_code parameter kept for compatibility.
+    Language is automatically detected from the topic text itself (not passed as parameter).
     """
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
@@ -1056,24 +1070,41 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif data.startswith("genre:"):
             genre = data.split(":")[1]
-            context.user_data["genre"] = genre
-            # Get user language
-            lang = context.user_data.get("lang")
-            if not lang:
-                user = await asyncio.to_thread(get_user, user_id)
-                lang = user.get("lang", "en")
-                context.user_data["lang"] = lang
-            await query.edit_message_text(
-                tr(user_id, "choose_mood").format(genre),
-                reply_markup=moods_keyboard(lang)
-            )
+            
+            if genre == "Custom":
+                # Ask user to type their custom genre
+                context.user_data["awaiting_custom_genre"] = True
+                lang = context.user_data.get("lang", "en")
+                await query.edit_message_text(
+                    tr(user_id, "enter_custom_genre")
+                )
+            else:
+                context.user_data["genre"] = genre
+                # Get user language
+                lang = context.user_data.get("lang")
+                if not lang:
+                    user = await asyncio.to_thread(get_user, user_id)
+                    lang = user.get("lang", "en")
+                    context.user_data["lang"] = lang
+                await query.edit_message_text(
+                    tr(user_id, "choose_mood").format(genre),
+                    reply_markup=moods_keyboard(lang)
+                )
         
         elif data.startswith("mood:"):
             mood = data.split(":")[1]
-            context.user_data["mood"] = mood
-            await query.edit_message_text(
-                tr(user_id, "describe_song").format(mood)
-            )
+            
+            if mood == "Custom":
+                # Ask user to type their custom mood
+                context.user_data["awaiting_custom_mood"] = True
+                await query.edit_message_text(
+                    tr(user_id, "enter_custom_mood")
+                )
+            else:
+                context.user_data["mood"] = mood
+                await query.edit_message_text(
+                    tr(user_id, "describe_song").format(mood)
+                )
         
         elif data.startswith("generate:"):
             # Generate music from lyrics
@@ -1204,6 +1235,32 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_data = context.user_data
     
+    # Handle custom genre input
+    if user_data.get("awaiting_custom_genre"):
+        user_data["genre"] = text
+        user_data.pop("awaiting_custom_genre")
+        # Show mood selection
+        lang = user_data.get("lang")
+        if not lang:
+            user = await asyncio.to_thread(get_user, user_id)
+            lang = user.get("lang", "en")
+            user_data["lang"] = lang
+        await update.message.reply_text(
+            tr(user_id, "choose_mood").format(text),
+            reply_markup=moods_keyboard(lang)
+        )
+        return
+    
+    # Handle custom mood input
+    if user_data.get("awaiting_custom_mood"):
+        user_data["mood"] = text
+        user_data.pop("awaiting_custom_mood")
+        # Ask for song description
+        await update.message.reply_text(
+            tr(user_id, "describe_song").format(text)
+        )
+        return
+    
     # If user has selected genre and mood, generate lyrics
     if "genre" in user_data and "mood" in user_data:
         await update.message.reply_text(tr(user_id, "generating"))
@@ -1219,20 +1276,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Save the topic (user's song description) for later gender analysis
             context.user_data["topic"] = text
             
+            # Generate lyrics - language auto-detected from topic text
             lyrics = await openrouter_lyrics(
-                text,
-                lang,
-                user_data["genre"],
-                user_data["mood"]
+                text,  # Topic text (language auto-detected from here)
+                user_data.get("genre", "Pop"),
+                user_data.get("mood", "Happy")
             )
             
             context.user_data["lyrics"] = lyrics
-            
-            # Get user language for button text
-            lang = user_data.get("lang")
-            if not lang:
-                user = await asyncio.to_thread(get_user, user_id)
-                lang = user.get("lang", "en")
             
             # Show lyrics with generate button
             kb = InlineKeyboardMarkup([[
@@ -1241,11 +1292,12 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await update.message.reply_text(f"{tr(user_id, 'your_lyrics')}\n\n{lyrics}", reply_markup=kb)
         except Exception as e:
-            log.error(f"Lyrics generation error: {e}")
+            log.error(f"Lyrics generation error: {e}", exc_info=True)
             await update.message.reply_text(tr(user_id, "error").format(str(e)))
     else:
         # Start the flow
-        await update.message.reply_text(tr(user_id, "choose_genre_first"), reply_markup=genres_keyboard("en"))
+        lang = user_data.get("lang", "en")
+        await update.message.reply_text(tr(user_id, "choose_genre_first"), reply_markup=genres_keyboard(lang))
 
 # -------------------------
 # FastAPI (Stripe webhook)
