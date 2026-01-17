@@ -678,6 +678,38 @@ Answer:"""
     
     return "unclear"
 
+def sanitize_for_piapi(text: str) -> str:
+    """
+    Sanitize text for PIAPI to avoid special characters that may cause issues.
+    
+    - Replace smart quotes with regular quotes
+    - Replace em/en dashes with regular hyphens
+    - Remove zero-width spaces and invisible characters
+    - Strip excessive whitespace and newlines
+    """
+    import re
+    
+    # Replace smart quotes with regular quotes
+    text = text.replace('"', '"').replace('"', '"')
+    text = text.replace(''', "'").replace(''', "'")
+    
+    # Replace em/en dashes with regular hyphens
+    text = text.replace('—', '-').replace('–', '-')
+    
+    # Remove zero-width spaces and other invisible Unicode characters
+    text = re.sub(r'[\u200B-\u200D\uFEFF]', '', text)
+    
+    # Replace multiple spaces with single space
+    text = re.sub(r' +', ' ', text)
+    
+    # Replace multiple newlines with single newline
+    text = re.sub(r'\n\n+', '\n', text)
+    
+    # Strip leading/trailing whitespace
+    text = text.strip()
+    
+    return text
+
 async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, gender: str = None) -> Dict[str, Any]:
     """Generate music using PIAPI Suno endpoint - Step 1: Create task
     
@@ -708,28 +740,35 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
     # Generate a meaningful title from the lyrics
     song_title = generate_song_title(lyrics)
     
-    # Build tags with optional gender specification
-    tags = f"{genre}, {mood}"
+    # Sanitize all text inputs for PIAPI compatibility
+    lyrics_clean = sanitize_for_piapi(lyrics)
+    tags_clean = sanitize_for_piapi(f"{genre}, {mood}")
+    title_clean = sanitize_for_piapi(song_title)
+    
+    # Add gender to tags if specified
     if gender == "male":
-        tags += ", male_vocals"
+        tags_clean += ", male_vocals"
         log.info("Generating with male vocals")
     elif gender == "female":
-        tags += ", female_vocals"
+        tags_clean += ", female_vocals"
         log.info("Generating with female vocals")
     
     # PIAPI uses a different format - task-based API
-    # Use minimal parameters to avoid conflicts - let PIAPI use defaults
+    # Use MINIMAL parameters - only send non-empty required fields
+    # Do NOT send mv, make_instrumental, or any experimental fields
     payload = {
         "model": "suno",
         "task_type": "music",
-        "input": {
-            "prompt": lyrics,
-            "tags": tags,
-            "title": song_title,
-            # Removed: make_instrumental, mv, and other experimental fields
-            # Let PIAPI use defaults for maximum compatibility
-        }
+        "input": {}
     }
+    
+    # Only add non-empty fields to minimize payload
+    if lyrics_clean:
+        payload["input"]["prompt"] = lyrics_clean
+    if tags_clean:
+        payload["input"]["tags"] = tags_clean
+    if title_clean:
+        payload["input"]["title"] = title_clean
     
     # PIAPI uses X-API-Key header, not Authorization Bearer
     headers = {
