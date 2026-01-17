@@ -430,18 +430,28 @@ async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
     # Detect language from topic text
     def detect_language(text):
         """Detect if text is in Ukrainian, Russian, or English"""
+        # Ukrainian-specific characters (і, ї, є, ґ)
         ukrainian_chars = set('іїєґІЇЄҐ')
+        # Russian-specific characters (ы, ъ, э, ё)
         russian_chars = set('ыъэёЫЪЭЁ')
+        # General Cyrillic characters (common to both Russian and Ukrainian)
+        cyrillic_chars = set('абвгдежзийклмнопрстуфхцчшщьюяАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЬЮЯ')
         
+        # If has Ukrainian-specific chars, it's Ukrainian
         if any(char in text for char in ukrainian_chars):
             return "Ukrainian"
+        # If has Russian-specific chars, it's Russian
         elif any(char in text for char in russian_chars):
             return "Russian"
+        # If has Cyrillic but no Ukrainian-specific chars, likely Russian
+        elif any(char in text for char in cyrillic_chars):
+            return "Russian"
+        # If has Latin alphabet, it's English
         elif any('a' <= char.lower() <= 'z' for char in text):
             return "English"
         else:
-            # Default to Ukrainian if can't detect
-            return "Ukrainian"
+            # Default to Russian if can't detect (most users)
+            return "Russian"
     
     detected_lang = detect_language(topic)
     
