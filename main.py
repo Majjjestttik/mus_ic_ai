@@ -17,6 +17,7 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    BotCommand,
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -1246,6 +1247,23 @@ async def start_telegram_bot():
     async def _run():
         await telegram_app.initialize()
         await telegram_app.start()
+        
+        # Set bot commands menu (shows in Telegram's "/" menu)
+        commands = [
+            BotCommand("start", "Start the bot"),
+            BotCommand("menu", "Show main menu"),
+            BotCommand("language", "Change language"),
+            BotCommand("current", "Current song"),
+            BotCommand("balance", "Check balance"),
+            BotCommand("buy", "Buy credits"),
+            BotCommand("help", "Show help"),
+        ]
+        try:
+            await telegram_app.bot.set_my_commands(commands)
+            log.info("Bot commands menu set successfully")
+        except Exception as e:
+            log.warning(f"Failed to set bot commands: {e}")
+        
         await telegram_app.updater.start_polling(drop_pending_updates=True)
         log.info("Telegram bot started (polling)")
 
