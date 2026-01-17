@@ -580,8 +580,72 @@ def generate_song_title(lyrics: str, max_length: int = 50) -> str:
     
     return title if title else "Untitled Song"
 
-async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -> Dict[str, Any]:
-    """Generate music using PIAPI Suno endpoint - Step 1: Create task"""
+def get_user_gender(user_id: int) -> str:
+    """Get user gender from database. Returns 'male', 'female', or 'unknown'"""
+    user = get_user(user_id)
+    return user.get("gender", "unknown")
+
+async def analyze_song_gender_logic(topic: str, lyrics: str) -> str:
+    """Analyze if song should have male or female vocals using AI.
+    
+    Returns: 'male', 'female', 'neutral', or 'unclear'
+    """
+    # Create a prompt to analyze gender context
+    prompt = f"""Analyze if this song should be sung by a male or female vocalist based on the content.
+
+Topic: {topic}
+
+Lyrics excerpt: {lyrics[:400]}
+
+Consider:
+- First-person perspective (I/me pronouns and gender context)
+- Subject matter (soldier, father, mother, bride, etc.)
+- Gender-specific themes
+
+Answer with ONLY ONE word:
+- "male" if the song is clearly from a male perspective or should be sung by male
+- "female" if the song is clearly from a female perspective or should be sung by female
+- "neutral" if gender doesn't matter or could be either
+- "unclear" if you cannot determine
+
+Answer:"""
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": OPENROUTER_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 10,
+            "temperature": 0.3,
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://openrouter.ai/api/v1/chat/completions", 
+                                   json=payload, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    result = data["choices"][0]["message"]["content"].lower().strip()
+                    # Return only if valid result
+                    if result in ["male", "female", "neutral", "unclear"]:
+                        return result
+    except Exception as e:
+        log.error(f"Error analyzing gender: {e}")
+    
+    return "unclear"
+
+async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, gender: str = None) -> Dict[str, Any]:
+    """Generate music using PIAPI Suno endpoint - Step 1: Create task
+    
+    Args:
+        lyrics: Song lyrics
+        genre: Music genre
+        mood: Song mood
+        demo: Whether this is demo mode
+        gender: Optional vocal gender ('male', 'female', or None for default)
+    """
     if not PIAPI_API_KEY:
         raise RuntimeError("PIAPI_API_KEY not set")
     
@@ -602,13 +666,22 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool) -
     # Generate a meaningful title from the lyrics
     song_title = generate_song_title(lyrics)
     
+    # Build tags with optional gender specification
+    tags = f"{genre}, {mood}"
+    if gender == "male":
+        tags += ", male_vocals"
+        log.info("Generating with male vocals")
+    elif gender == "female":
+        tags += ", female_vocals"
+        log.info("Generating with female vocals")
+    
     # PIAPI uses a different format - task-based API
     payload = {
         "model": "suno",
         "task_type": "music",
         "input": {
             "prompt": lyrics,
-            "tags": f"{genre}, {mood}",
+            "tags": tags,
             "title": song_title,
             "make_instrumental": False,
         }
@@ -1011,6 +1084,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lyrics = user_data.get("lyrics", "")
             genre = user_data.get("genre", "Pop")
             mood = user_data.get("mood", "Happy")
+            topic = user_data.get("topic", "")  # Get original song description
             
             if not lyrics:
                 await query.edit_message_text(tr(user_id, "error").format(tr(user_id, "no_lyrics")))
@@ -1028,33 +1102,81 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(tr(user_id, "generating_music"))
             
             try:
-                # Step 1: Create music generation task
-                result = await piapi_generate_music(lyrics, genre, mood, demo=False)
+                # Step 0: Determine gender-based vocal selection
+                user_gender = get_user_gender(user_id)  # 'male', 'female', or 'unknown'
+                song_gender = await analyze_song_gender_logic(topic, lyrics)  # 'male', 'female', 'neutral', 'unclear'
                 
-                # Extract task_id from response
-                task_id = None
-                if "data" in result and isinstance(result["data"], dict):
-                    task_id = result["data"].get("task_id")
+                log.info(f"User gender: {user_gender}, Song gender analysis: {song_gender}")
                 
-                if not task_id:
-                    log.error(f"No task_id in PIAPI response: {result}")
-                    await query.message.reply_text(tr(user_id, "error").format("No task_id received from API"))
-                    return
+                # Decide which versions to generate
+                generate_versions = []
                 
-                log.info(f"Music generation task created: {task_id}")
+                if song_gender in ["male", "female"]:
+                    # Song has clear gender logic - respect it
+                    generate_versions = [song_gender]
+                    log.info(f"Song has clear {song_gender} context - generating {song_gender} version only")
+                elif user_gender == "male" and song_gender in ["neutral", "unclear"]:
+                    # Male user + ambiguous song -> generate BOTH versions
+                    generate_versions = ["male", "female"]
+                    log.info("Male user + neutral song - generating both male and female versions")
+                elif user_gender == "female" and song_gender in ["neutral", "unclear"]:
+                    # Female user + ambiguous song -> generate female version
+                    generate_versions = ["female"]
+                    log.info("Female user + neutral song - generating female version")
+                else:
+                    # Unknown user gender or other cases -> no specific gender
+                    generate_versions = [None]
+                    log.info("No specific gender preference - generating default version")
                 
-                # Step 2: Poll for task completion (this may take 1-5 minutes)
-                completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
+                # Generate each version
+                generated_count = 0
+                for idx, gender_version in enumerate(generate_versions):
+                    try:
+                        gender_label = gender_version if gender_version else "default"
+                        log.info(f"Generating version {idx + 1}/{len(generate_versions)}: {gender_label} vocals")
+                        
+                        # Step 1: Create music generation task
+                        result = await piapi_generate_music(lyrics, genre, mood, demo=False, gender=gender_version)
+                        
+                        # Extract task_id from response
+                        task_id = None
+                        if "data" in result and isinstance(result["data"], dict):
+                            task_id = result["data"].get("task_id")
+                        
+                        if not task_id:
+                            log.error(f"No task_id in PIAPI response: {result}")
+                            continue
+                        
+                        log.info(f"Music generation task created: {task_id} ({gender_label} vocals)")
+                        
+                        # Step 2: Poll for task completion (this may take 1-5 minutes)
+                        completed_result = await piapi_poll_task(task_id, max_attempts=60, delay=5)
+                        
+                        # Step 3: Extract audio URLs from completed task
+                        audio_urls = extract_audio_urls(completed_result)
+                        
+                        if audio_urls:
+                            for url in audio_urls:
+                                # Add label if generating multiple versions
+                                if len(generate_versions) > 1:
+                                    version_label = "🎤 Male version:" if gender_version == "male" else "🎤 Female version:"
+                                    await query.message.reply_text(version_label)
+                                await query.message.reply_audio(url)
+                                generated_count += 1
+                        else:
+                            log.warning(f"No audio URLs for {gender_label} version")
+                    
+                    except Exception as e:
+                        log.error(f"Error generating {gender_version if gender_version else 'default'} version: {e}")
+                        # Continue with next version instead of failing completely
+                        continue
                 
-                # Step 3: Extract audio URLs from completed task
-                audio_urls = extract_audio_urls(completed_result)
-                
-                if audio_urls:
-                    for url in audio_urls:
-                        await query.message.reply_audio(url)
+                # Final message
+                if generated_count > 0:
                     await query.message.reply_text(tr(user_id, "done"))
                 else:
                     await query.message.reply_text(tr(user_id, "error").format(tr(user_id, "no_audio")))
+                    
             except Exception as e:
                 log.error(f"Music generation error: {e}")
                 await query.message.reply_text(tr(user_id, "error").format(str(e)))
@@ -1093,6 +1215,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user = await asyncio.to_thread(get_user, user_id)
                 lang = user.get("lang", "en")
                 user_data["lang"] = lang  # Store for future use
+            
+            # Save the topic (user's song description) for later gender analysis
+            context.user_data["topic"] = text
             
             lyrics = await openrouter_lyrics(
                 text,
