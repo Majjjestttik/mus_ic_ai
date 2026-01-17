@@ -1162,11 +1162,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         
                         if audio_urls:
                             for url in audio_urls:
-                                # Add label if generating multiple versions
+                                # Build caption with title and gender version
+                                caption_parts = [f"🎵 {song_title}"]
                                 if len(generate_versions) > 1:
-                                    version_label = "🎤 Male version:" if gender_version == "male" else "🎤 Female version:"
-                                    await query.message.reply_text(version_label)
-                                await query.message.reply_audio(url)
+                                    version_label = "🎤 Male version" if gender_version == "male" else "🎤 Female version"
+                                    caption_parts.append(version_label)
+                                
+                                caption = "\n".join(caption_parts)
+                                await query.message.reply_audio(url, caption=caption)
                                 generated_count += 1
                         else:
                             log.warning(f"No audio URLs for {gender_label} version")
