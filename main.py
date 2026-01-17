@@ -427,67 +427,50 @@ async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
     # Step 1: Generate initial lyrics - PROFESSIONAL SONGWRITER LEVEL
-    system_prompt_step1 = """Role: You are a legendary songwriter and platinum producer. Your lyrics combine deep poetry (Brodsky-level sophistication) with commercial hit appeal (Max Martin-level).
+    system_prompt_step1 = """You are a professional songwriter.
+
+Write a SONG, not a poem.
+
+Rules:
+- Use clear rhyme schemes (ABAB or AABB in verses)
+- Every verse must rhyme
+- Chorus must be catchy, emotional and easy to sing
+- Simple, spoken language
+- Focus on emotions, people, real situations
+- Avoid complex metaphors
+- Lyrics must sound natural when sung
+- No poetry style
+
+Structure:
+Verse 1  
+Chorus  
+Verse 2  
+Chorus  
+Bridge  
+Final Chorus  
+
+Rhyme rules:
+- Lines must end with rhyming words
+- Rhymes must sound natural, not forced
+
+Style:
+Warm, emotional, personal  
+Like popular radio songs
 
 CRITICAL: You MUST write in the SAME LANGUAGE as the user's topic. If the topic is in Russian, write in Russian. If in English, write in English. If in Ukrainian, write in Ukrainian. NEVER default to one language.
 
-Technical Requirements:
-
-1. RHYME SCHEMES: Use complex patterns (AABB, ABAB, ABBA) + internal rhymes within lines. Avoid simple verb rhymes. Use assonance and alliteration for musicality even before adding sound.
-
-2. METER (Rhythm): Every line must have precise syllable count. Word stresses (accents) must fall on strong musical beats. The text must "read itself" rhythmically.
-
-3. DRAMATURGY:
-   - Verse 1: Exposition, story setup, atmosphere creation
-   - Chorus (Hook): Explosive, memorable, emotional center containing the main idea
-   - Verse 2: Plot development, new details, conflict intensification
-   - Bridge: Sharp mood/perspective shift, emotional peak
-
-4. LITERARY DEVICES: Use metaphors, hyperbole, personification. Don't tell directly - paint visual images in the listener's mind (Show, Don't Tell principle).
-
-5. LOGIC: No filler words. Every single word must serve the theme concept.
-
-Output ONLY the lyrics. No explanations, no comments."""
+Output ONLY the lyrics."""
     
-    user_prompt_step1 = f"""**ABSOLUTE FIRST PRIORITY - LANGUAGE:**
-ANALYZE the language used in this topic: "{topic}"
-Write EVERY SINGLE WORD of the lyrics in THE EXACT SAME LANGUAGE as this topic.
-- If topic is in Ukrainian → ALL lyrics in Ukrainian
-- If topic is in Russian → ALL lyrics in Russian  
-- If topic is in English → ALL lyrics in English
-- DO NOT TRANSLATE. DO NOT USE ENGLISH if topic is in another language.
+    user_prompt_step1 = f"""**LANGUAGE:** Write in the EXACT SAME LANGUAGE as this topic: "{topic}"
+- If topic is in Ukrainian → lyrics in Ukrainian
+- If topic is in Russian → lyrics in Russian  
+- If topic is in English → lyrics in English
 
 Topic: {topic}
 Mood: {mood}
-Style: {genre}
+Language: (detect from topic above)
 
-Write PROFESSIONAL-LEVEL SONG LYRICS:
-
-RHYME & METER:
-- Use complex rhyme schemes (AABB, ABAB, ABBA)
-- Add internal rhymes WITHIN lines (not just at line ends)
-- Use assonance and alliteration for musical flow
-- Avoid simple verb rhymes
-- Precise syllable count - word stresses must align with musical beats
-
-STRUCTURE & DRAMATURGY:
-- Verse 1 (4-8 lines): Story exposition, atmosphere setup
-- Chorus (4-8 lines): EXPLOSIVE hook, memorable, main emotional idea
-- Verse 2 (4-8 lines): Plot development, new details, conflict escalation
-- Chorus (repeat)
-- Bridge (3-6 lines): Sharp mood change, emotional PEAK
-- Final Chorus
-
-LITERARY QUALITY:
-- Use metaphors, hyperbole, personification
-- SHOW images, DON'T TELL emotions directly
-- Every word must serve the theme - NO FILLER
-- Balance poetic depth with commercial catchiness
-
-LENGTH: 200-300 words total
-FEEL: Deep, emotional, memorable, singable
-
-Write lyrics combining poetry sophistication with hit-song appeal:"""
+Write a radio-friendly song with clear rhymes and emotional appeal:"""
 
     
     async with aiohttp.ClientSession() as session:
@@ -512,43 +495,22 @@ Write lyrics combining poetry sophistication with hit-song appeal:"""
             data = await resp.json()
             initial_lyrics = data["choices"][0]["message"]["content"]
         
-        # Step 2: Professional rhyme and meter correction
-        rhyme_correction_prompt = f"""**ABSOLUTE FIRST PRIORITY - PRESERVE ORIGINAL LANGUAGE:**
-The lyrics below are in a specific language. You MUST keep them in that EXACT SAME LANGUAGE.
-DO NOT translate to English. DO NOT change the language. ONLY enhance rhymes and meter.
+        # Step 2: Simple rhyme check and correction
+        rhyme_correction_prompt = f"""**PRESERVE THE ORIGINAL LANGUAGE:**
+The lyrics below are in a specific language. Keep them in that EXACT SAME LANGUAGE.
+DO NOT translate. ONLY fix rhymes if needed.
 
-**CRITICAL REQUIREMENTS:**
-
-1. RHYME SCHEMES:
-- Use complex patterns: AABB, ABAB, or ABBA
-- Add internal rhymes WITHIN lines (not just end rhymes)
-- Rhymes MUST be PHONETIC (sound similar), not just visual
-- Avoid simple verb rhymes
-- AABB: lines 1&2 rhyme, lines 3&4 rhyme
-- ABAB: lines 1&3 rhyme, lines 2&4 rhyme
-- ABBA: lines 1&4 rhyme, lines 2&3 rhyme
-
-2. METER & RHYTHM:
-- Check syllable count consistency
-- Ensure word stresses align with strong musical beats
-- Text must "read itself" with natural rhythm
-
-3. LITERARY QUALITY:
-- Strengthen metaphors and imagery
-- Apply "Show, Don't Tell" principle
-- Remove any filler words
-- Ensure every word serves the theme
-
-**IMPORTANT:**
-- PRESERVE THE ORIGINAL LANGUAGE - this is MANDATORY
-- Do NOT change the core story or emotional arc
-- ONLY enhance rhymes, meter, and poetic quality
-- Add rhyme markers (A) and (B) at end of rhyming lines
+**Requirements:**
+- Check if verses have clear rhymes (ABAB or AABB)
+- Make sure rhymes sound natural (not forced)
+- Keep the story and emotions the same
+- Simple, spoken language (like radio songs)
+- Make sure it sounds good when sung
 
 **Original lyrics:**
 {initial_lyrics}
 
-**Rewrite with professional-level rhymes, meter, and poetic devices IN THE SAME LANGUAGE:**"""
+**Fix any rhyme issues and make it sound more natural (keep the same language):**"""
 
         async with session.post(
             "https://openrouter.ai/api/v1/chat/completions",
