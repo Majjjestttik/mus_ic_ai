@@ -411,50 +411,67 @@ async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
-    prompt = f"""Analyze the language of the user's song description and write the lyrics in THE SAME LANGUAGE as the description.
+    prompt = f"""You are a professional songwriter. Analyze the language of the user's song description and write the lyrics in THE SAME LANGUAGE as the description.
 
 User's song description: {topic}
 Genre: {genre}
 Mood: {mood}
 
-CRITICAL RULES:
+CRITICAL RULES - FOLLOW EXACTLY:
+
+LANGUAGE:
 1. Detect the language from the user's description text
 2. Write ALL lyrics in the SAME language as the description (if Chinese description → Chinese lyrics, Russian → Russian, etc.)
-3. Create a proper rhyme scheme - each verse MUST have rhyming lines (AABB, ABAB, or ABCB pattern)
-4. Make the rhymes natural and smooth, not forced
-5. Match the genre and mood precisely
-6. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
-7. Each verse should be 4-6 lines, each chorus should be 4-6 lines
-8. Make the song full-length (at least 150-250 words total) for 2-3 minute duration
-9. Include a bridge section after the second chorus for variety
+
+RHYMING (MANDATORY - EVERY VERSE AND CHORUS MUST RHYME):
+3. **EVERY verse MUST have a clear rhyme scheme** - use AABB (lines 1-2 rhyme, lines 3-4 rhyme) OR ABAB (lines 1-3 rhyme, lines 2-4 rhyme) OR ABCB (lines 2-4 rhyme, lines 1-3 don't rhyme)
+4. **EVERY chorus MUST rhyme perfectly** - this is the most important part, make the chorus rhymes strong and memorable
+5. Make the rhymes natural and smooth - choose words that rhyme naturally, not forced
+6. The LAST WORD of rhyming lines MUST actually rhyme (sound similar at the end)
+7. Example rhyme pairs: love/above, night/light, fire/desire, dream/stream, away/stay, heart/apart
+
+STRUCTURE:
+8. Match the genre and mood precisely
+9. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
+10. Each verse should be 4-6 lines, each chorus should be 4-6 lines
+11. Make the song full-length (at least 150-250 words total) for 2-3 minute duration
+12. Include a bridge section after the second chorus for variety
 
 Format:
 [Intro] (optional - 1-2 lines)
 
-[Verse 1]
-...4-6 lines with clear rhymes...
+[Verse 1] (using ABAB pattern as example)
+Line 1 ending with word A
+Line 2 ending with word B
+Line 3 ending with word A (rhymes with line 1)
+Line 4 ending with word B (rhymes with line 2)
 
-[Chorus]
-...4-6 lines catchy chorus with strong rhymes...
+[Chorus] (using AABB pattern as example)
+Line 1 ending with word C
+Line 2 ending with word C (rhymes with line 1)
+Line 3 ending with word D
+Line 4 ending with word D (rhymes with line 3)
 
 [Verse 2]
-...4-6 lines more lyrics with rhymes...
+...4-6 lines with MANDATORY rhymes following the same pattern...
 
 [Chorus]
-...repeat chorus...
+...repeat the EXACT SAME chorus with perfect rhymes...
 
 [Bridge]
-...3-4 lines different melody/mood...
+...3-4 lines with different melody but STILL with rhymes...
 
 [Verse 3]
-...4-6 lines final verse...
+...4-6 lines final verse with STRONG rhymes...
 
 [Final Chorus]
-...repeat chorus with variations...
+...repeat chorus one more time with perfect rhymes...
 
 [Outro] (optional - 1-2 lines)
 
-Write creative, emotional, FULL-LENGTH lyrics with perfect rhyming. The language MUST match the user's description language. Make it a complete, professional song that will last 2-3 minutes."""
+REMEMBER: EVERY SINGLE VERSE AND CHORUS MUST HAVE CLEAR, OBVIOUS RHYMES. The last words of the rhyming lines MUST sound similar. This is NOT optional - rhyming is MANDATORY for EVERY section.
+
+Write creative, emotional, FULL-LENGTH lyrics with PERFECT MANDATORY rhyming in EVERY verse and chorus. The language MUST match the user's description language. Make it a complete, professional song that will last 2-3 minutes with CONSISTENT RHYMING throughout."""
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
