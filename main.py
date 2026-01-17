@@ -424,20 +424,26 @@ Focus on:
 Do NOT worry about perfect rhymes yet - focus on meaning first.
 Output ONLY the lyrics, no explanations."""
     
-    user_prompt_step1 = f"""Topic: {topic}
-Language: {topic} (detect and use the SAME language as the topic)
+    user_prompt_step1 = f"""**ABSOLUTE FIRST PRIORITY - LANGUAGE:**
+ANALYZE the language used in this topic: "{topic}"
+Write EVERY SINGLE WORD of the lyrics in THE EXACT SAME LANGUAGE as this topic.
+- If topic is in Ukrainian → ALL lyrics in Ukrainian
+- If topic is in Russian → ALL lyrics in Russian  
+- If topic is in English → ALL lyrics in English
+- DO NOT TRANSLATE. DO NOT USE ENGLISH if topic is in another language.
+
+Topic: {topic}
 Mood: {mood}
 Style: {genre}
 
 Write song lyrics with:
-1. LANGUAGE: Write in the EXACT SAME LANGUAGE as the topic. DO NOT translate to English.
-2. STRUCTURE: 2-3 verses + chorus (repeat chorus after each verse)
+1. STRUCTURE: 2-3 verses + chorus (repeat chorus after each verse)
    - Each verse: 4-8 lines
    - Chorus: 4-8 lines (should be memorable and catchy)
    - Optional bridge: 4-6 lines
-3. LENGTH: 200-300 words total
-4. STORY: Clear narrative with emotional progression
-5. Focus on MEANING and EMOTION - don't force rhymes yet
+2. LENGTH: 200-300 words total
+3. STORY: Clear narrative with emotional progression
+4. Focus on MEANING and EMOTION - don't force rhymes yet
 
 FORMAT:
 [Verse 1]
@@ -447,7 +453,7 @@ FORMAT:
 [Bridge]
 [Final Chorus]
 
-Write the lyrics focusing on story and emotion:"""
+Write the lyrics in the SAME LANGUAGE as the topic, focusing on story and emotion:"""
 
     
     async with aiohttp.ClientSession() as session:
@@ -473,7 +479,9 @@ Write the lyrics focusing on story and emotion:"""
             initial_lyrics = data["choices"][0]["message"]["content"]
         
         # Step 2: Rhyme correction - rewrite with STRONG, CLEAR, PHONETIC rhymes
-        rhyme_correction_prompt = f"""Rewrite these lyrics using STRONG, CLEAR RHYMES only.
+        rhyme_correction_prompt = f"""**ABSOLUTE FIRST PRIORITY - PRESERVE ORIGINAL LANGUAGE:**
+The lyrics below are in a specific language. You MUST keep them in that EXACT SAME LANGUAGE.
+DO NOT translate to English. DO NOT change the language. ONLY improve the rhymes.
 
 **CRITICAL RHYMING RULES:**
 - Each verse MUST follow AABB or ABAB rhyme scheme
@@ -487,15 +495,15 @@ Write the lyrics focusing on story and emotion:"""
 - If any line does NOT rhyme by SOUND, rewrite it
 
 **IMPORTANT:**
+- PRESERVE THE ORIGINAL LANGUAGE - this is MANDATORY
 - Do NOT change the story or emotion
-- PRESERVE the language - keep lyrics in the SAME language
 - ONLY improve the rhymes to make them clear and strong
 - Add rhyme markers (A) and (B) at the end of rhyming lines
 
 **Original lyrics:**
 {initial_lyrics}
 
-**Rewrite with strong phonetic rhymes while keeping the story and language:**"""
+**Rewrite with strong phonetic rhymes IN THE SAME LANGUAGE while keeping the story:**"""
 
         async with session.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -506,7 +514,7 @@ Write the lyrics focusing on story and emotion:"""
             json={
                 "model": "openai/gpt-3.5-turbo",
                 "messages": [
-                    {"role": "system", "content": "You are an expert rhyme editor. You rewrite lyrics to have perfect phonetic rhymes (rhymes by SOUND) while preserving the story and emotion."},
+                    {"role": "system", "content": "You are an expert rhyme editor. You rewrite lyrics to have perfect phonetic rhymes (rhymes by SOUND) while ABSOLUTELY PRESERVING the original language. NEVER translate to English. NEVER change the language."},
                     {"role": "user", "content": rhyme_correction_prompt}
                 ],
             },
