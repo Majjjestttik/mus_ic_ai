@@ -412,43 +412,42 @@ async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
-    # Step 1: Generate initial lyrics with strict requirements
-    system_prompt = """You are a professional songwriter.
+    # Step 1: Generate initial lyrics focused on STORY and EMOTION only (not perfect rhymes)
+    system_prompt_step1 = """You are a professional songwriter creating the emotional core of a song.
 
-Rules:
-1. Lyrics MUST rhyme in every verse.
-2. Use ONLY these rhyme schemes: ABAB or AABB.
-3. Every line must end with a clear rhyming word.
-4. No free verse, no random endings.
-5. Verses can have 4–8 lines, but ALL lines must rhyme.
-6. The lyrics must be logical, emotional, and song-ready.
-7. Avoid weak or forced rhymes.
-8. Write in a natural, musical style.
-9. If any line does NOT rhyme, rewrite the entire verse.
+Focus on:
+- Clear story with beginning → development → conclusion
+- Emotional depth and authenticity
+- Logical flow between lines
+- Memorable chorus hook
 
+Do NOT worry about perfect rhymes yet - focus on meaning first.
 Output ONLY the lyrics, no explanations."""
     
-    user_prompt = f"""Topic: {topic}
-Language: {topic} (detect and use the SAME language)
+    user_prompt_step1 = f"""Topic: {topic}
+Language: {topic} (detect and use the SAME language as the topic)
 Mood: {mood}
 Style: {genre}
 
-CRITICAL REQUIREMENTS:
-1. LANGUAGE: Write lyrics in the EXACT SAME LANGUAGE as the topic above. DO NOT translate to English.
-2. RHYMING: EVERY verse must rhyme (ABAB or AABB). No exceptions.
-3. LENGTH: 200-300 words total. Verses: 4-8 lines each. Chorus: 4-8 lines.
-4. STRUCTURE: Minimum 2 verses + chorus. At least ONE verse must be longer than 4 lines.
-5. STORY: Logical flow with beginning → development → conclusion.
+Write song lyrics with:
+1. LANGUAGE: Write in the EXACT SAME LANGUAGE as the topic. DO NOT translate to English.
+2. STRUCTURE: 2-3 verses + chorus (repeat chorus after each verse)
+   - Each verse: 4-8 lines
+   - Chorus: 4-8 lines (should be memorable and catchy)
+   - Optional bridge: 4-6 lines
+3. LENGTH: 200-300 words total
+4. STORY: Clear narrative with emotional progression
+5. Focus on MEANING and EMOTION - don't force rhymes yet
 
 FORMAT:
-[Verse 1] (4-8 lines, ABAB or AABB rhyming)
-[Chorus] (4-8 lines with memorable hook)
-[Verse 2] (4-8 lines, ABAB or AABB rhyming)
-[Chorus] (repeat)
-[Bridge] (optional, 4-6 lines)
-[Final Chorus] (repeat)
+[Verse 1]
+[Chorus]
+[Verse 2]
+[Chorus]
+[Bridge]
+[Final Chorus]
 
-Write the lyrics now."""
+Write the lyrics focusing on story and emotion:"""
 
     
     async with aiohttp.ClientSession() as session:
@@ -462,8 +461,8 @@ Write the lyrics now."""
             json={
                 "model": "openai/gpt-3.5-turbo",
                 "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "system", "content": system_prompt_step1},
+                    {"role": "user", "content": user_prompt_step1}
                 ],
             },
         ) as resp:
@@ -473,26 +472,30 @@ Write the lyrics now."""
             data = await resp.json()
             initial_lyrics = data["choices"][0]["message"]["content"]
         
-        # Step 2: Self-validation and correction
-        validation_prompt = f"""Review these song lyrics and check:
+        # Step 2: Rhyme correction - rewrite with STRONG, CLEAR, PHONETIC rhymes
+        rhyme_correction_prompt = f"""Rewrite these lyrics using STRONG, CLEAR RHYMES only.
 
-1. **LANGUAGE PRESERVATION (CRITICAL)**: Are the lyrics in the SAME language as they were written? DO NOT translate them!
-2. **Rhyme scheme**: Are all verses using ABAB or AABB rhyming? Mark imperfect rhymes with (A), (B) labels at line ends
-3. **Verse lengths**: Are verses different lengths (4, 6, 8, or 10 lines)? Is at least one verse longer than 4 lines?
-4. **Structure**: Minimum 2 verses + chorus present?
-5. **Logical flow**: Does the story have beginning → development → conclusion?
-6. **No filler**: Are all phrases meaningful and necessary?
+**CRITICAL RHYMING RULES:**
+- Each verse MUST follow AABB or ABAB rhyme scheme
+- Rhymes MUST sound similar (phonetic rhyme), not just look similar
+- Listen to the SOUND of the last word in each line
+- AABB: lines 1&2 rhyme, lines 3&4 rhyme (love/above, night/light)
+- ABAB: lines 1&3 rhyme, lines 2&4 rhyme (away/stay, day/play)
+- NO free verse
+- NO weak rhymes
+- NO visual-only rhymes
+- If any line does NOT rhyme by SOUND, rewrite it
+
+**IMPORTANT:**
+- Do NOT change the story or emotion
+- PRESERVE the language - keep lyrics in the SAME language
+- ONLY improve the rhymes to make them clear and strong
+- Add rhyme markers (A) and (B) at the end of rhyming lines
 
 **Original lyrics:**
 {initial_lyrics}
 
-**Your task:**
-- PRESERVE THE ORIGINAL LANGUAGE - do not translate to any other language!
-- If there are errors in rhyming, structure, or logic: REWRITE the lyrics fixing all issues while keeping the original meaning and language
-- If lyrics are already good: Return them with (A)/(B) rhyme markers added to verse lines
-- Add rhyme markers like: "Walking down the street at night (A)" and "Feeling like everything's right (A)"
-
-Return the final corrected lyrics with rhyme markers IN THE SAME LANGUAGE AS THE ORIGINAL:"""
+**Rewrite with strong phonetic rhymes while keeping the story and language:**"""
 
         async with session.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -503,14 +506,14 @@ Return the final corrected lyrics with rhyme markers IN THE SAME LANGUAGE AS THE
             json={
                 "model": "openai/gpt-3.5-turbo",
                 "messages": [
-                    {"role": "system", "content": "You are an expert lyric reviewer and editor. You check rhyme schemes, structure, and coherence."},
-                    {"role": "user", "content": validation_prompt}
+                    {"role": "system", "content": "You are an expert rhyme editor. You rewrite lyrics to have perfect phonetic rhymes (rhymes by SOUND) while preserving the story and emotion."},
+                    {"role": "user", "content": rhyme_correction_prompt}
                 ],
             },
         ) as resp:
             if resp.status != 200:
-                # If validation fails, return initial lyrics
-                print(f"Warning: Validation step failed with status {resp.status}, using initial lyrics")
+                # If rhyme correction fails, return initial lyrics
+                print(f"Warning: Rhyme correction step failed with status {resp.status}, using initial lyrics")
                 return initial_lyrics
             data = await resp.json()
             final_lyrics = data["choices"][0]["message"]["content"]
