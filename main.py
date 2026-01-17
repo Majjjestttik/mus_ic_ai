@@ -404,96 +404,67 @@ def tr(user_id: int, key: str) -> str:
 # OpenRouter lyrics generation
 # -------------------------
 async def openrouter_lyrics(topic: str, lang_code: str, genre: str, mood: str) -> str:
-    """Generate song lyrics using OpenRouter
+    """Generate song lyrics using OpenRouter with two-step validation
     
     Note: lang_code is now used only as a fallback. The actual language is detected from the topic text.
     """
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
-    prompt = f"""You are a professional songwriter. Analyze the language of the user's song description and write the lyrics in THE SAME LANGUAGE as the description.
+    # Step 1: Generate initial lyrics with strict requirements
+    system_prompt = """You are a professional poet and songwriter with expertise in rhyme schemes, storytelling, and emotional impact. Your specialty is creating memorable, well-structured songs with perfect rhyming."""
+    
+    user_prompt = f"""Create song lyrics based on this description:
 
-User's song description: {topic}
-Genre: {genre}
-Mood: {mood}
+**Topic**: {topic}
+**Genre**: {genre}
+**Mood**: {mood}
 
-CRITICAL RULES - FOLLOW EXACTLY:
+**MANDATORY REQUIREMENTS:**
 
-LANGUAGE:
-1. Detect the language from the user's description text
-2. Write ALL lyrics in the SAME language as the description (if Chinese description → Chinese lyrics, Russian → Russian, etc.)
+**LANGUAGE:**
+- Detect the language from the topic description
+- Write ALL lyrics in the SAME language as the description (Chinese description → Chinese lyrics, Russian → Russian, etc.)
 
-RHYMING (**URGENT PRIORITY** - MANDATORY FOR EVERY LINE):
-3. **CRITICAL**: Every verse MUST use AABB, ABAB, or ABCB rhyme scheme consistently
-4. **EVERY verse MUST have perfect rhymes** - AABB (lines 1-2 rhyme, 3-4 rhyme), ABAB (lines 1-3 rhyme, 2-4 rhyme), or ABCB (lines 2-4 rhyme)
-5. **EVERY chorus MUST rhyme perfectly** - use AABB or ABAB pattern with CLEAR end rhymes
-6. NEVER skip rhyming - it destroys song quality and is UNACCEPTABLE
-7. The LAST WORD of rhyming lines MUST actually rhyme (sound similar at the end)
-8. Example rhyme pairs: love/above, night/light, fire/desire, dream/stream, away/stay, heart/apart
-9. Random non-rhyming lyrics are UNACCEPTABLE - rhyming is the #1 PRIORITY
+**RHYMING (MANDATORY - ABAB or AABB):**
+- Every verse MUST rhyme using ABAB or AABB scheme
+- ABAB: lines 1&3 rhyme, lines 2&4 rhyme
+- AABB: lines 1&2 rhyme, lines 3&4 rhyme, etc.
+- Allow IMPERFECT rhymes (similar sounds, not exact)
+- Chorus MUST have 4-8 lines with memorable hook and rhyming
+- NO lines without rhymes (even imperfect rhymes count)
 
-STRUCTURE:
-10. Match the genre and mood precisely
-11. Write AT LEAST 3-4 verses and 2-3 choruses for a full-length song
-12. Each verse should be 4-10 lines (flexible based on story needs, max 10 lines if no chorus)
-13. Each chorus should be 4-10 lines (can be longer memorable hooks)
-14. Make the song full-length (at least 200-300 words total) for AT LEAST 2 minutes 30 seconds duration
-15. Include a bridge section (3-6 lines) after the second chorus for variety
+**STRUCTURE:**
+- Minimum: 2 verses + chorus (repeat chorus after each verse)
+- Verses: Use DIFFERENT lengths - choose from 4, 6, 8, or 10 lines
+- At least ONE verse must be longer than 4 lines (6, 8, or 10)
+- Example: Verse 1 (6 lines), Chorus (6 lines), Verse 2 (4 lines), Chorus (repeat), Bridge (4 lines), Final Chorus
+- Optional: bridge, intro, outro
+- Total: 200-300 words minimum (for 2:20-3:00 minute song)
 
-STORYTELLING AND LOGIC (MANDATORY):
-16. Tell ONE CLEAR story with beginning, middle, and end
-17. Each verse should BUILD on the previous one (Verse 1: introduce, Verse 2: develop, Verse 3: climax/resolve)
-18. The chorus should REPEAT THE MAIN IDEA/EMOTION consistently
-19. Bridge should offer a NEW PERSPECTIVE or emotional shift
-20. Make it emotionally COMPELLING and BELIEVABLE
-21. Use SHOW DON'T TELL - describe actions/feelings, not just state them
-22. Create VISUAL SCENES the listener can imagine
-23. Build EMOTIONAL INTENSITY as the song progresses
-24. Use vivid imagery and concrete details, not vague abstractions
-25. Stay focused on ONE central theme/story throughout the song
-26. Make every word COUNT - no filler or meaningless phrases
+**STORYTELLING (MANDATORY):**
+- Clear arc: beginning → development → conclusion
+- NOT random phrases - logical story progression
+- Verse 1: introduce situation/emotion
+- Verse 2: develop/complicate
+- Verse 3 (if present): resolve/climax
+- Chorus: repeat the MAIN HOOK/EMOTION consistently
+- Show don't tell: use vivid imagery, concrete details
+- NO meaningless filler words
 
-Format:
-[Intro] (optional - 1-2 lines)
+**FORMAT:**
+[Verse 1] (choose 4, 6, 8, or 10 lines with ABAB or AABB rhyming)
+[Chorus] (4-8 lines with catchy hook and rhymes)
+[Verse 2] (different length: 4, 6, 8, or 10 lines with rhyming)
+[Chorus] (repeat exactly)
+[Bridge] (optional, 4-6 lines)
+[Final Chorus] (repeat)
 
-[Verse 1] - INTRODUCTION (set the scene, introduce characters/situation)
-(4-10 lines using ABAB pattern as example)
-Line 1 ending with word A
-Line 2 ending with word B
-Line 3 ending with word A (rhymes with line 1)
-Line 4 ending with word B (rhymes with line 2)
-...up to 10 lines total...
+Write the lyrics now."""
 
-[Chorus] - MAIN MESSAGE/HOOK (emotional core, what the song is about)
-(4-10 lines using AABB pattern as example)
-Line 1 ending with word C
-Line 2 ending with word C (rhymes with line 1)
-Line 3 ending with word D
-Line 4 ending with word D (rhymes with line 3)
-...up to 10 lines total...
-
-[Verse 2] - DEVELOPMENT (deepen the story, add complications)
-...4-10 lines with MANDATORY rhymes following the same pattern...
-
-[Chorus] - REPEAT EXACT SAME
-...repeat the EXACT SAME chorus with perfect rhymes...
-
-[Bridge] - PERSPECTIVE SHIFT (new angle, realization, or emotional turn)
-...3-6 lines with different melody but STILL with rhymes...
-
-[Verse 3] - RESOLUTION (climax, conclusion, or final statement)
-...4-10 lines final verse with STRONG rhymes...
-
-[Final Chorus] - REPEAT EXACT SAME
-...repeat chorus one more time with perfect rhymes...
-
-[Outro] (optional - 1-2 lines)
-
-REMEMBER: EVERY SINGLE VERSE AND CHORUS MUST HAVE CLEAR, OBVIOUS RHYMES. The last words of the rhyming lines MUST sound similar. This is NOT optional - rhyming is MANDATORY for EVERY section. The story must FLOW LOGICALLY from start to finish. Each line should connect to the next meaningfully. Avoid random word salad - make it make sense!
-
-Write creative, emotional, FULL-LENGTH lyrics (200-300 words) with PERFECT MANDATORY rhyming in EVERY verse and chorus. The language MUST match the user's description language. Make it a complete, professional song that will last AT LEAST 2 minutes 30 seconds (2:30) with CONSISTENT RHYMING and COHERENT STORYTELLING throughout."""
-
+    
     async with aiohttp.ClientSession() as session:
+        # Step 1: Generate initial lyrics
         async with session.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -502,14 +473,58 @@ Write creative, emotional, FULL-LENGTH lyrics (200-300 words) with PERFECT MANDA
             },
             json={
                 "model": "openai/gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
             },
         ) as resp:
             if resp.status != 200:
                 text = await resp.text()
                 raise RuntimeError(f"OpenRouter error: {text}")
             data = await resp.json()
-            return data["choices"][0]["message"]["content"]
+            initial_lyrics = data["choices"][0]["message"]["content"]
+        
+        # Step 2: Self-validation and correction
+        validation_prompt = f"""Review these song lyrics and check:
+
+1. **Rhyme scheme**: Are all verses using ABAB or AABB rhyming? Mark imperfect rhymes with (A), (B) labels at line ends
+2. **Verse lengths**: Are verses different lengths (4, 6, 8, or 10 lines)? Is at least one verse longer than 4 lines?
+3. **Structure**: Minimum 2 verses + chorus present?
+4. **Logical flow**: Does the story have beginning → development → conclusion?
+5. **No filler**: Are all phrases meaningful and necessary?
+
+**Original lyrics:**
+{initial_lyrics}
+
+**Your task:**
+- If there are errors in rhyming, structure, or logic: REWRITE the lyrics fixing all issues while keeping the original meaning and language
+- If lyrics are already good: Return them with (A)/(B) rhyme markers added to verse lines
+- Add rhyme markers like: "Walking down the street at night (A)" and "Feeling like everything's right (A)"
+
+Return the final corrected lyrics with rhyme markers:"""
+
+        async with session.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "openai/gpt-3.5-turbo",
+                "messages": [
+                    {"role": "system", "content": "You are an expert lyric reviewer and editor. You check rhyme schemes, structure, and coherence."},
+                    {"role": "user", "content": validation_prompt}
+                ],
+            },
+        ) as resp:
+            if resp.status != 200:
+                # If validation fails, return initial lyrics
+                log.warning("Validation step failed, using initial lyrics")
+                return initial_lyrics
+            data = await resp.json()
+            final_lyrics = data["choices"][0]["message"]["content"]
+            return final_lyrics
 
 # -------------------------
 # PIAPI Suno music generation
