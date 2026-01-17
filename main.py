@@ -427,9 +427,27 @@ async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
     # Step 1: Generate initial lyrics - PROFESSIONAL SONGWRITER LEVEL
-    system_prompt_step1 = """You are a professional songwriter.
+    # Detect language from topic text
+    def detect_language(text):
+        """Detect if text is in Ukrainian, Russian, or English"""
+        ukrainian_chars = set('іїєґІЇЄҐ')
+        russian_chars = set('ыъэёЫЪЭЁ')
+        
+        if any(char in text for char in ukrainian_chars):
+            return "Ukrainian"
+        elif any(char in text for char in russian_chars):
+            return "Russian"
+        elif any('a' <= char.lower() <= 'z' for char in text):
+            return "English"
+        else:
+            # Default to Ukrainian if can't detect
+            return "Ukrainian"
+    
+    detected_lang = detect_language(topic)
+    
+    system_prompt_step1 = f"""You are a professional songwriter.
 
-Write a SONG, not a poem.
+Write a SONG, not a poem, in {detected_lang} language ONLY.
 
 Rules:
 - Use clear rhyme schemes (ABAB or AABB in verses)
@@ -457,20 +475,16 @@ Style:
 Warm, emotional, personal  
 Like popular radio songs
 
-CRITICAL: You MUST write in the SAME LANGUAGE as the user's topic. If the topic is in Russian, write in Russian. If in English, write in English. If in Ukrainian, write in Ukrainian. NEVER default to one language.
+CRITICAL: Write ONLY in {detected_lang}. DO NOT use any other language.
 
-Output ONLY the lyrics."""
+Output ONLY the lyrics in {detected_lang}."""
     
-    user_prompt_step1 = f"""**LANGUAGE:** Write in the EXACT SAME LANGUAGE as this topic: "{topic}"
-- If topic is in Ukrainian → lyrics in Ukrainian
-- If topic is in Russian → lyrics in Russian  
-- If topic is in English → lyrics in English
+    user_prompt_step1 = f"""Language: {detected_lang}
 
 Topic: {topic}
 Mood: {mood}
-Language: (detect from topic above)
 
-Write a radio-friendly song with clear rhymes and emotional appeal:"""
+Write a radio-friendly song in {detected_lang} with clear rhymes and emotional appeal:"""
 
     
     async with aiohttp.ClientSession() as session:
@@ -496,8 +510,8 @@ Write a radio-friendly song with clear rhymes and emotional appeal:"""
             initial_lyrics = data["choices"][0]["message"]["content"]
         
         # Step 2: Simple rhyme check and correction
-        rhyme_correction_prompt = f"""**PRESERVE THE ORIGINAL LANGUAGE:**
-The lyrics below are in a specific language. Keep them in that EXACT SAME LANGUAGE.
+        rhyme_correction_prompt = f"""**LANGUAGE: {detected_lang} ONLY**
+The lyrics below are in {detected_lang}. Keep them in {detected_lang}.
 DO NOT translate. ONLY fix rhymes if needed.
 
 **Requirements:**
@@ -506,11 +520,12 @@ DO NOT translate. ONLY fix rhymes if needed.
 - Keep the story and emotions the same
 - Simple, spoken language (like radio songs)
 - Make sure it sounds good when sung
+- Write ONLY in {detected_lang}
 
 **Original lyrics:**
 {initial_lyrics}
 
-**Fix any rhyme issues and make it sound more natural (keep the same language):**"""
+**Fix any rhyme issues and make it sound more natural (keep {detected_lang} language):**"""
 
         async with session.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -521,7 +536,7 @@ DO NOT translate. ONLY fix rhymes if needed.
             json={
                 "model": "openai/gpt-4o-mini",  # Upgraded to GPT-4o-mini for better rhyme and language handling
                 "messages": [
-                    {"role": "system", "content": "You are an expert rhyme editor. You rewrite lyrics to have perfect phonetic rhymes (rhymes by SOUND) while ABSOLUTELY PRESERVING the original language. NEVER translate to English. NEVER change the language."},
+                    {"role": "system", "content": f"You are an expert rhyme editor. You rewrite lyrics to have perfect phonetic rhymes (rhymes by SOUND) while ABSOLUTELY writing in {detected_lang} ONLY. Write every word in {detected_lang}. NEVER use English or any other language."},
                     {"role": "user", "content": rhyme_correction_prompt}
                 ],
             },
