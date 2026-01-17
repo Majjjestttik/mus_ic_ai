@@ -718,6 +718,7 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
         log.info("Generating with female vocals")
     
     # PIAPI uses a different format - task-based API
+    # Use minimal parameters to avoid conflicts - let PIAPI use defaults
     payload = {
         "model": "suno",
         "task_type": "music",
@@ -725,7 +726,8 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
             "prompt": lyrics,
             "tags": tags,
             "title": song_title,
-            "make_instrumental": False,
+            # Removed: make_instrumental, mv, and other experimental fields
+            # Let PIAPI use defaults for maximum compatibility
         }
     }
     
@@ -750,6 +752,52 @@ async def piapi_generate_music(lyrics: str, genre: str, mood: str, demo: bool, g
         error_msg = f"Cannot connect to PIAPI server at {PIAPI_BASE_URL}. Error: {str(e)}"
         log.error(error_msg)
         raise RuntimeError(f"Connection failed: {str(e)}. Please check that PIAPI_BASE_URL is set to a valid server URL.")
+
+async def piapi_generate_music_with_retry(lyrics: str, genre: str, mood: str, demo: bool = False, gender: str = None, max_retries: int = 4):
+    """
+    Generate music with retry logic and exponential backoff.
+    
+    Retry schedule: 0s → 10s → 25s → 60s
+    This helps handle transient PIAPI service issues and rate limiting.
+    
+    Args:
+        lyrics: Song lyrics
+        genre: Music genre
+        mood: Song mood
+        demo: Demo mode flag
+        gender: Optional gender for vocals
+        max_retries: Maximum number of attempts (default: 4)
+    
+    Returns:
+        dict: PIAPI response with task_id
+        
+    Raises:
+        RuntimeError: If all retry attempts fail
+    """
+    retry_delays = [0, 10, 25, 60]  # seconds between retries
+    
+    for attempt in range(max_retries):
+        try:
+            log.info(f"Generation attempt {attempt + 1}/{max_retries}")
+            result = await piapi_generate_music(lyrics, genre, mood, demo, gender)
+            
+            # Success! Return immediately
+            if attempt > 0:
+                log.info(f"Generation succeeded on attempt {attempt + 1}")
+            return result
+            
+        except Exception as e:
+            is_last_attempt = (attempt == max_retries - 1)
+            
+            if is_last_attempt:
+                # All attempts failed
+                log.error(f"All {max_retries} generation attempts failed. Last error: {e}")
+                raise RuntimeError("Service overloaded or temporarily unavailable. Please try again in a few minutes.")
+            
+            # Not last attempt - wait and retry with exponential backoff
+            delay = retry_delays[attempt + 1] if attempt + 1 < len(retry_delays) else 60
+            log.warning(f"Generation attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...")
+            await asyncio.sleep(delay)
 
 async def piapi_poll_task(task_id: str, max_attempts: int = 60, delay: int = 5) -> Dict[str, Any]:
     """Poll PIAPI task until completion - Step 2: Wait for results
@@ -1201,7 +1249,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 song_title = generate_song_title(lyrics)
                 log.info(f"Generated song title: {song_title}")
                 
-                # Generate each version
+                # Generate each version SEQUENTIALLY (not parallel) with delays between tracks
                 generated_count = 0
                 last_error = None
                 for idx, gender_version in enumerate(generate_versions):
@@ -1209,8 +1257,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         gender_label = gender_version if gender_version else "default"
                         log.info(f"Generating version {idx + 1}/{len(generate_versions)}: {gender_label} vocals")
                         
-                        # Step 1: Create music generation task
-                        result = await piapi_generate_music(lyrics, genre, mood, demo=False, gender=gender_version)
+                        # Add delay between tracks (except first) to reduce server load
+                        if idx > 0:
+                            log.info("Waiting 2 seconds before next generation to avoid rate limiting...")
+                            await asyncio.sleep(2)
+                        
+                        # Step 1: Create music generation task WITH RETRY LOGIC
+                        result = await piapi_generate_music_with_retry(lyrics, genre, mood, demo=False, gender=gender_version)
                         log.info(f"PIAPI generate response: {result}")
                         
                         # Extract task_id from response
