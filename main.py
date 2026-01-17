@@ -426,16 +426,20 @@ async def openrouter_lyrics(topic: str, genre: str, mood: str) -> str:
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OPENROUTER_API_KEY not set")
     
-    # Step 1: Generate initial lyrics focused on STORY and EMOTION only (not perfect rhymes)
-    system_prompt_step1 = """You are a professional songwriter creating the emotional core of a song.
+    # Step 1: Generate initial lyrics focused on SIMPLE, EMOTIONAL POP STYLE
+    system_prompt_step1 = """You are a songwriter for emotional, simple, melodic songs.
 
-Focus on:
-- Clear story with beginning → development → conclusion
-- Emotional depth and authenticity
-- Logical flow between lines
-- Memorable chorus hook
+Rules:
+- Write like a real pop song, not poetry
+- Use simple, conversational language
+- Focus on people, relationships, and emotions
+- Avoid complex metaphors
+- Verses and chorus must rhyme clearly
+- Chorus must be catchy and repeatable
+- Lyrics should sound good when sung
 
-Do NOT worry about perfect rhymes yet - focus on meaning first.
+Style reference: emotional, warm, personal songs.
+
 Output ONLY the lyrics, no explanations."""
     
     user_prompt_step1 = f"""**ABSOLUTE FIRST PRIORITY - LANGUAGE:**
@@ -450,24 +454,19 @@ Topic: {topic}
 Mood: {mood}
 Style: {genre}
 
-Write song lyrics with:
-1. STRUCTURE: 2-3 verses + chorus (repeat chorus after each verse)
+Write simple, emotional pop song lyrics:
+1. STYLE: Simple words, conversational tone
+   - Like talking to a friend, not writing poetry
+   - Focus on PEOPLE, relationships, emotions
+   - Avoid complex metaphors
+2. STRUCTURE: Verse – Chorus – Verse – Chorus – Bridge – Final Chorus
    - Each verse: 4-8 lines
-   - Chorus: 4-8 lines (should be memorable and catchy)
-   - Optional bridge: 4-6 lines
-2. LENGTH: 200-300 words total
-3. STORY: Clear narrative with emotional progression
-4. Focus on MEANING and EMOTION - don't force rhymes yet
+   - Chorus: 4-8 lines (CATCHY and REPEATABLE)
+3. RHYMING: Verses and chorus must rhyme clearly
+4. LENGTH: 200-300 words total
+5. Make it sound GOOD when SUNG
 
-FORMAT:
-[Verse 1]
-[Chorus]
-[Verse 2]
-[Chorus]
-[Bridge]
-[Final Chorus]
-
-Write the lyrics in the SAME LANGUAGE as the topic, focusing on story and emotion:"""
+Write lyrics that feel warm, personal, and emotional:"""
 
     
     async with aiohttp.ClientSession() as session:
